@@ -1,6 +1,8 @@
-﻿namespace EZDUploader.UI
+﻿using System.Windows.Forms;
+
+namespace EZDUploader.UI
 {
-    partial class MainForm
+    partial class MainForm : Form
     {
         /// <summary>
         /// Required designer variable.
@@ -29,8 +31,9 @@
         {
             this.components = new System.ComponentModel.Container();
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(800, 450);
-            this.Text = "MainForm";
+            this.ClientSize = new System.Drawing.Size(1024, 768);  // Zmieniam rozmiar okna
+            this.MinimumSize = new System.Drawing.Size(800, 600);  // Dodaję minimalny rozmiar
+            this.Text = "EZD Uploader";
         }
         #endregion
     }

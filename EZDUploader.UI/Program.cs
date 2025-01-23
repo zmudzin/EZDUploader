@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using EZDUploader.Core.Configuration;
 using EZDUploader.Core.Interfaces;
 using EZDUploader.Infrastructure.Services;
+using System.Windows.Forms;
 
 namespace EZDUploader.UI;
 
@@ -10,77 +11,40 @@ static class Program
     [STAThread]
     static void Main()
     {
+        Application.SetHighDpiMode(HighDpiMode.SystemAware);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
-        RunAsync().GetAwaiter().GetResult();
-    }
+        var services = new ServiceCollection();
+        ConfigureServices(services);
 
-    private static async Task RunAsync()
-    {
+        using var serviceProvider = services.BuildServiceProvider();
+
         try
         {
-            var services = new ServiceCollection();
-            ConfigureServices(services);
-
-            using var serviceProvider = services.BuildServiceProvider();
             var ezdService = serviceProvider.GetRequiredService<IEzdApiService>();
-
-            // SprawdŸ ustawienia i spróbuj zalogowaæ
-            while (!ezdService.IsAuthenticated)
-            {
-                using var settingsForm = new SettingsForm(ezdService.Settings);
-                if (settingsForm.ShowDialog() != DialogResult.OK)
-                {
-                    return; // U¿ytkownik anulowa³
-                }
-
-                // Próba automatycznego logowania po zapisaniu ustawieñ
-                if (!await TryAuthenticate(ezdService))
-                {
-                    MessageBox.Show("Nie uda³o siê zalogowaæ. SprawdŸ ustawienia.",
-                        "B³¹d logowania", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    continue;
-                }
-            }
-
-            // Jeœli logowanie siê powiod³o, pokazujemy g³ówne okno
-            Application.Run(serviceProvider.GetRequiredService<MainForm>());
+            var mainForm = serviceProvider.GetRequiredService<MainForm>();
+            Application.Run(mainForm);
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Wyst¹pi³ b³¹d: {ex.Message}", "B³¹d",
-                MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-    }
-
-    private static async Task<bool> TryAuthenticate(IEzdApiService ezdService)
-    {
-        try
-        {
-            if (ezdService.Settings.AuthType == AuthenticationType.Token)
-            {
-                ezdService.SetupTokenAuth(ezdService.Settings.ApplicationToken);
-                return ezdService.IsAuthenticated;
-            }
-            else
-            {
-                return await ezdService.LoginAsync(
-                    ezdService.Settings.Login,
-                    ezdService.Settings.Password);
-            }
-        }
-        catch
-        {
-            return false;
+            MessageBox.Show($"Wyst¹pi³ b³¹d podczas uruchamiania aplikacji: {ex.Message}",
+                "B³¹d krytyczny", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
     private static void ConfigureServices(ServiceCollection services)
     {
-        var settings = ConfigurationManager.LoadSettings();
+        // Konfiguracja - najpierw rejestrujemy ustawienia!
+        var settings = ConfigurationManager.LoadSettings() ?? new ApiSettings();
         services.AddSingleton(settings);
-        services.AddScoped<IEzdApiService, EzdApiService>();
+
+        // Serwisy
+        services.AddSingleton<IEzdApiService, EzdApiService>();
+        services.AddSingleton<IFileUploadService, FileUploadService>();
+
+        // Forms
         services.AddTransient<MainForm>();
+        services.AddTransient<SettingsForm>();
     }
 }

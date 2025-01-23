@@ -94,17 +94,7 @@ namespace EZDUploader.Core.Configuration
 
         private static string GetConfigPath()
         {
-            var appDataPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "EZDUploader"
-            );
-
-            if (!Directory.Exists(appDataPath))
-            {
-                Directory.CreateDirectory(appDataPath);
-            }
-
-            return Path.Combine(appDataPath, CONFIG_FILE);
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, CONFIG_FILE);
         }
     }
 }

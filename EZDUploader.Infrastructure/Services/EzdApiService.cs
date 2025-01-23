@@ -27,28 +27,14 @@ namespace EZDUploader.Infrastructure.Services
             {
                 ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true
             };
-            _client = new HttpClient(handler) { BaseAddress = new Uri(settings.BaseUrl) };
-            _jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
-            Debug.WriteLine($"Inicjalizacja API Service z URL: {settings.BaseUrl}");
-
-            // Jeśli mamy zapisane dane logowania, od razu próbujemy się zalogować
-            if (!string.IsNullOrEmpty(settings.Login) && !string.IsNullOrEmpty(settings.Password))
+            _client = new HttpClient(handler);
+            if (!string.IsNullOrEmpty(settings.BaseUrl))
             {
-                Debug.WriteLine("Znaleziono zapisane dane logowania, próba automatycznego logowania...");
-                SetupAuthHeaders(settings.Login, settings.Password); // Password jest już zakodowane w settings
-                IsAuthenticated = true;
+                _client.BaseAddress = new Uri(settings.BaseUrl);
             }
-        }
 
-        private void SetupAuthHeaders(string login, string password)
-        {
-            Debug.WriteLine("Konfiguracja nagłówków Basic Auth...");
-            _client.DefaultRequestHeaders.Clear();
-            var decryptedPassword = DecryptPassword(password);
-            var base64Auth = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{login}:{decryptedPassword}"));
-            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", base64Auth);
-            _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            _jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         }
 
         public async Task<TeczkaRwaDto> PobierzRwaPoRoczniku(int rok)
@@ -133,34 +119,44 @@ namespace EZDUploader.Infrastructure.Services
                 Debug.WriteLine($"Próba logowania dla użytkownika: {username}");
                 SetupAuthHeaders(username, password);
 
-                // Próba wykonania prostego zapytania testowego
-                var response = await _client.PostAsync("/Jednostka/PoId",
-                    new StringContent(
-                        JsonSerializer.Serialize(new { IdentyfikatorJednostki = 1 }),
-                        Encoding.UTF8,
-                        "application/json"));
-
-                var responseContent = await response.Content.ReadAsStringAsync();
-                Debug.WriteLine($"Odpowiedź serwera: {responseContent}");
+                var parameters = new Dictionary<string, string> { { "IdentyfikatorJednostki", "1" } };
+                var encodedContent = new FormUrlEncodedContent(parameters);
+                var response = await _client.PostAsync("/Jednostka/PoId", encodedContent);
 
                 if (response.IsSuccessStatusCode)
                 {
-                    Debug.WriteLine("Logowanie udane");
                     IsAuthenticated = true;
                     return true;
                 }
-                else
-                {
-                    Debug.WriteLine($"Logowanie nieudane. Kod: {response.StatusCode}");
-                    IsAuthenticated = false;
-                    return false;
-                }
+                return false;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Błąd podczas logowania: {ex.Message}");
-                IsAuthenticated = false;
+                Debug.WriteLine($"Błąd logowania: {ex.Message}");
                 return false;
+            }
+        }
+
+        private void SetupAuthHeaders(string login, string password)
+        {
+            Debug.WriteLine("Konfiguracja Basic Auth...");
+            Debug.WriteLine($"Login: {login}");
+
+            _client.DefaultRequestHeaders.Clear();
+            var decryptedPassword = DecryptPassword(password);
+            Debug.WriteLine($"Odkodowane hasło: {decryptedPassword}");
+
+            var base64Auth = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{login}:{decryptedPassword}"));
+            Debug.WriteLine($"Base64 auth string: {base64Auth}");
+
+            _client.DefaultRequestHeaders.Accept.Clear();
+            _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", base64Auth);
+
+            Debug.WriteLine("Headers:");
+            foreach (var header in _client.DefaultRequestHeaders)
+            {
+                Debug.WriteLine($"{header.Key}: {string.Join(", ", header.Value)}");
             }
         }
 
