@@ -12,10 +12,9 @@ namespace EZDUploader.Core.Models
         public string FileName { get; set; }
         public long FileSize { get; set; }
         public DateTime AddedDate { get; set; }
+        public string DocumentType { get; set; } // Rodzaj dokumentu
         public UploadStatus Status { get; set; }
         public string ErrorMessage { get; set; }
-        public double Progress { get; set; }
-        public int? IdKoszulki { get; set; }
     }
 
     public enum UploadStatus
