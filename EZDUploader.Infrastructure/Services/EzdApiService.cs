@@ -31,10 +31,13 @@ namespace EZDUploader.Infrastructure.Services
             _client = new HttpClient(handler);
             if (!string.IsNullOrEmpty(settings.BaseUrl))
             {
-                _client.BaseAddress = new Uri(settings.BaseUrl);
+                _client.BaseAddress = new Uri(settings.BaseUrl.TrimEnd('/') + "/");
             }
 
-            _jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            _jsonOptions = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
         }
 
         public async Task<TeczkaRwaDto> PobierzRwaPoRoczniku(int rok)
@@ -65,9 +68,19 @@ namespace EZDUploader.Infrastructure.Services
         public async Task<IEnumerable<int>> PobierzIdentyfikatoryKoszulek(int idPracownika)
         {
             EnsureAuthenticated();
-            var request = new PobierzIdentyfikatoryKoszulekRequest { IdPracownikaWlasciciela = idPracownika };
-            var response = await PostAsync<PobierzIdentyfikatoryKoszulekResponse>("/Koszulka/PobierzIdentyfikatoryKoszulek", request);
+            var request = new
+            {
+                IdPracownikaWlasciciela = idPracownika,
+                CID = 1,
+                Role = new string[] { }
+            };
+            try {
+            var response = await PostAsync<PobierzIdentyfikatoryKoszulekResponse>("api1/PobierzIdentyfikatoryKoszulekRequest", request);
             return response?.Koszulki ?? new List<int>();
+            } catch (HttpRequestException ex) when (ex.Message.Contains("404")) {
+                Debug.WriteLine("Nie znaleziono koszulek - zwracam pustą listę");
+                return new List<int>();
+            }
         }
 
         public void SetupTokenAuth(string token)
@@ -126,6 +139,7 @@ namespace EZDUploader.Infrastructure.Services
                 if (response.IsSuccessStatusCode)
                 {
                     IsAuthenticated = true;
+                    _currentUserId = 1; // TODO: Pobierz prawdziwe ID z API
                     return true;
                 }
                 return false;
@@ -167,17 +181,39 @@ namespace EZDUploader.Infrastructure.Services
             _client.DefaultRequestHeaders.Clear();
         }
 
+        private RejestrujSpraweResponse MapToResponse(RejestrujSpraweRes res)
+        {
+            if (res == null) return null;
+
+            return new RejestrujSpraweResponse
+            {
+                IdSprawy = res.IdSprawy,
+                DataRejestracjiSprawy = res.DataRejestracjiSprawy,
+                IdTeczki = res.IdTeczki,
+                SymbolTeczki = res.SymbolTeczki,
+                KategoriaArchiwalna = res.KategoriaArchiwalna,
+                TypProwadzenia = res.TypProwadzenia
+            };
+        }
+
         private async Task<T> PostAsync<T>(string endpoint, object data)
         {
             try
             {
+                endpoint = endpoint.TrimStart('/');
                 var json = JsonSerializer.Serialize(data, _jsonOptions);
-                Debug.WriteLine($"Wysyłanie żądania do: {_client.BaseAddress}{endpoint}");
+                Debug.WriteLine($"Pełny URL: {_client.BaseAddress}{endpoint}");
                 Debug.WriteLine($"Dane: {json}");
 
                 using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+
+                // Dodanie nagłówków autoryzacyjnych
+                foreach (var header in _client.DefaultRequestHeaders)
+                {
+                    request.Headers.Add(header.Key, header.Value);
+                }
+
                 request.Content = new StringContent(json, Encoding.UTF8, "application/json");
-                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
                 var response = await _client.SendAsync(request);
                 var responseContent = await response.Content.ReadAsStringAsync();
@@ -187,6 +223,11 @@ namespace EZDUploader.Infrastructure.Services
 
                 if (!response.IsSuccessStatusCode)
                 {
+                    if (endpoint.Contains("PobierzIdentyfikatoryKoszulekRequest") &&
+                        response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                    {
+                        return default(T);
+                    }
                     throw new HttpRequestException(
                         $"API zwróciło błąd {response.StatusCode}: {responseContent}");
                 }
@@ -195,9 +236,49 @@ namespace EZDUploader.Infrastructure.Services
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Błąd HTTP: {ex.Message}");
-                Debug.WriteLine($"Inner Exception: {ex.InnerException?.Message}");
-                Debug.WriteLine($"Stack Trace: {ex.StackTrace}");
+                Debug.WriteLine($"Szczegóły błędu: {ex}");
+                throw;
+            }
+        }
+
+        public async Task<(PismoDto Koszulka, DokumentTypeDto Dokument)> DodajKoszulkeZPlikiem(
+    string nazwaKoszulki,
+    byte[] plikDane,
+    string nazwaPlikuZRozszerzeniem,
+    int idPracownika)
+        {
+            EnsureAuthenticated();
+
+            try
+            {
+                // 1. Sprawdzenie nazwy koszulki
+                if (nazwaKoszulki.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length < 2)
+                {
+                    throw new ArgumentException("Nazwa koszulki musi składać się z co najmniej dwóch wyrazów", nameof(nazwaKoszulki));
+                }
+
+                // 2. Utworzenie koszulki
+                var koszulka = await UtworzKoszulke(nazwaKoszulki, idPracownika);
+                Debug.WriteLine($"Utworzono koszulkę o ID: {koszulka.ID}");
+
+                // 3. Dodanie załącznika
+                var idZalacznika = await DodajZalacznik(plikDane, nazwaPlikuZRozszerzeniem, idPracownika);
+                Debug.WriteLine($"Dodano załącznik o ID: {idZalacznika}");
+
+                // 4. Rejestracja dokumentu
+                var dokument = await RejestrujDokument(
+                    nazwaPlikuZRozszerzeniem,
+                    koszulka.ID,
+                    idZalacznika,
+                    idPracownika
+                );
+                Debug.WriteLine($"Zarejestrowano dokument");
+
+                return (koszulka, dokument);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Błąd podczas dodawania koszulki z plikiem: {ex}");
                 throw;
             }
         }
@@ -207,17 +288,24 @@ namespace EZDUploader.Infrastructure.Services
             if (!IsAuthenticated)
                 throw new InvalidOperationException("Użytkownik nie jest zalogowany.");
         }
-
         public async Task<int> DodajZalacznik(byte[] dane, string nazwa, int idPracownika)
         {
             EnsureAuthenticated();
+
             var request = new DodajZalacznikRequest
             {
                 Dane = dane,
                 Nazwa = nazwa,
                 IdPracownikaWlasciciela = idPracownika
             };
-            var response = await PostAsync<DodajZalacznikResponse>("/Zalacznik/DodajZalcznik", request);
+
+            var response = await PostAsync<DodajZalacznikResponse>(
+                "Zalacznik/DodajZalcznik",  // poprawny endpoint bez przedrostka api1
+                request
+            );
+
+            Debug.WriteLine($"Odpowiedź z dodawania załącznika: {JsonSerializer.Serialize(response)}");
+
             return response.ContentId;
         }
 
@@ -241,31 +329,74 @@ namespace EZDUploader.Infrastructure.Services
         {
             EnsureAuthenticated();
 
-            var request = new UtworzKoszulkeReq
+            var request = new
             {
                 Nazwa = nazwa,
                 IdPracownikaWlasciciela = idPracownika
             };
 
-            var response = await PostAsync<UtworzKoszulkeRes>("/Zalacznik/UtworzKoszulke", request);
+            var response = await PostAsync<UtworzKoszulkeRes>("/api1/UtworzKoszulke", request);
+
             if (response?.IdKoszulki > 0)
             {
-                return await PobierzKoszulkePoId(response.IdKoszulki);
+                return new PismoDto
+                {
+                    ID = response.IdKoszulki,
+                    Nazwa = nazwa,
+                    DataUtworzenia = DateTime.Now,
+                    // Dodajemy brakujące wymagane pola
+                    Zawieszone = false,
+                    Zakonczone = false,
+                    KoszulkaWrazliwa = false,
+                    CzyZarchiwizowany = false
+                };
             }
-
             throw new Exception("Nie udało się utworzyć koszulki");
         }
 
-        private RejestrujSpraweResponse MapToResponse(RejestrujSpraweRes res)
+        public async Task<DokumentTypeDto> RejestrujDokument(string nazwa, int idKoszulki, int idZalacznika, int idPracownika)
         {
-            return new RejestrujSpraweResponse
+            EnsureAuthenticated();
+
+            var request = new
             {
-                IdSprawy = res.IdSprawy,
-                DataRejestracjiSprawy = res.DataRejestracjiSprawy,
-                IdTeczki = res.IdTeczki,
-                SymbolTeczki = res.SymbolTeczki,
-                KategoriaArchiwalna = res.KategoriaArchiwalna,
-                TypProwadzenia = res.TypProwadzenia
+                Dokument = new
+                {
+                    Nazwa = nazwa,
+                    Tytul = nazwa,
+                    Lokalizacja = new
+                    {
+                        IdentyfikatorKontenera = "EZD.TEST.FLAT.MAIN",
+                        IdentyfikatorZawartosci = idZalacznika.ToString(),
+                        NazwaZawartosci = nazwa,
+                        IdZalacznika = idZalacznika
+                    }
+                },
+                Koszulka = new
+                {
+                    IdKoszulki = idKoszulki,
+                    IdSprawy = 0,
+                    ZnakSprawy = ""
+                }
+            };
+
+            var response = await PostAsync<RejestrujDokumentResponse>("api3/RejestrujDokument", request);
+
+            // Mapowanie na DokumentTypeDto
+            // Mapowanie na DokumentTypeDto
+            if (response.IdDokumentu > int.MaxValue)
+            {
+                throw new OverflowException("IdDokumentu jest zbyt duże dla typu int");
+            }
+
+            return new DokumentTypeDto
+            {
+                Identyfikator = new WskazanieDokumentuDto
+                {
+                    Identyfikator = (int)response.IdDokumentu
+                },
+                DataUtworzenia = DateTime.Now,
+                Nazwa = nazwa
             };
         }
 
@@ -303,7 +434,7 @@ namespace EZDUploader.Infrastructure.Services
                 Rok = rok
             };
 
-            var response = await PostAsync<PismoDto[]>("/Teczka/PobierzSprawy", request);
+            var response = await PostAsync<PismoDto[]>("Teczka/PobierzSprawy", request);
             return response ?? new PismoDto[0];
         }
 
@@ -311,7 +442,7 @@ namespace EZDUploader.Infrastructure.Services
         {
             EnsureAuthenticated();
             var request = new PobierzKoszulkePoIdRequest { Id = id };
-            var response = await PostAsync<PobierzKoszulkePoIdResponse>("/Koszulka/PoId", request);
+            var response = await PostAsync<PobierzKoszulkePoIdResponse>("Koszulka/PoId", request);
             return response?.Pismo ?? throw new Exception("Nie znaleziono koszulki");
         }
 
@@ -319,7 +450,7 @@ namespace EZDUploader.Infrastructure.Services
         {
             EnsureAuthenticated();
             var request = new PobierzKoszulkePoZnakuSprawyRequest { Znak = znak };
-            var response = await PostAsync<PobierzKoszulkePoZnakuSprawyResponse>("/Koszulka/PobierzPoZnakuSprawy", request);
+            var response = await PostAsync<PobierzKoszulkePoZnakuSprawyResponse>("Koszulka/PobierzPoZnakuSprawy", request);
             return response?.Pismo ?? throw new Exception("Nie znaleziono sprawy");
         }
 
@@ -333,7 +464,7 @@ namespace EZDUploader.Infrastructure.Services
                 IdPracownikaWlasciciela = idPracownika,
                 Uwagi = uwagi
             };
-            var response = await PostAsync<RejestrujSpraweRes>("/RejestrSpraw/RejestrujSprawe", request);
+            var response = await PostAsync<RejestrujSpraweRes>("RejestrSpraw/RejestrujSprawe", request);
             return response != null ? MapToResponse(response) : throw new Exception("Nie udało się zarejestrować sprawy");
         }
 
@@ -346,7 +477,7 @@ namespace EZDUploader.Infrastructure.Services
                 IdPracownikaDocelowego = idPracownikaDocelowego,
                 IdPracownikaZrodlowego = idPracownikaZrodlowego
             };
-            var response = await PostAsync<PrzekazKoszulkeRes>("/Koszulka/PrzekazKoszulkeReq", request);
+            var response = await PostAsync<PrzekazKoszulkeRes>("Koszulka/PrzekazKoszulkeReq", request);
             return response?.IdEtapPisma ?? throw new Exception("Nie udało się przekazać koszulki");
         }
            public async Task<byte[]> PobierzZalacznik(int idZalacznika)
@@ -357,7 +488,7 @@ namespace EZDUploader.Infrastructure.Services
                 IdZalacznia = idZalacznika
             };
 
-            var response = await PostAsync<PobierzZalacznikResponse>("/Zalacznik/PobierzZalacznik", request);
+            var response = await PostAsync<PobierzZalacznikResponse>("Zalacznik/PobierzZalacznik", request);
             return response?.zalacznik ?? throw new Exception("Nie znaleziono załącznika");
         }
         private string DecryptPassword(string encryptedPassword)

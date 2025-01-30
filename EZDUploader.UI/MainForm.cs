@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Windows.Forms;
 using System.Drawing;
 using System.Diagnostics;
@@ -207,6 +208,8 @@ namespace EZDUploader.UI
         private void InitializeContextMenu()
         {
             contextMenu = new ContextMenuStrip();
+            contextMenu.Items.Add("Wyślij do EZD", null, SendToEzd_Click);
+            contextMenu.Items.Add("-");
             contextMenu.Items.Add("Usuń", null, RemoveFiles_Click);
             contextMenu.Items.Add("Zmień nazwę", null, RenameFiles_Click);
             contextMenu.Items.Add("Zmień datę", null, ChangeDates_Click);
@@ -441,6 +444,28 @@ namespace EZDUploader.UI
             }
         }
 
+        private async void SendToEzd_Click(object sender, EventArgs e)
+        {
+            if (filesListView.SelectedItems.Count == 0)
+            {
+                MessageBox.Show("Wybierz pliki do wysłania", "Informacja", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var selectedFiles = filesListView.SelectedItems.Cast<ListViewItem>()
+                .Select(item => (UploadFile)item.Tag)
+                .Where(f => f.Status != UploadStatus.Completed);
+
+            using var dialog = new Forms.UploadDialog(_ezdService, _fileUploadService, selectedFiles);
+            if (dialog.ShowDialog() == DialogResult.OK)
+            {
+                RefreshFilesList();
+                SetStatus("Pliki zostały wysłane", false);
+                await Task.Delay(2000);
+                SetStatus("Gotowy", false);
+            }
+        }
+
         private async Task UpdateUserStatus()
         {
             if (_ezdService.IsAuthenticated)
@@ -605,39 +630,32 @@ namespace EZDUploader.UI
         }
         private async void uploadButton_Click(object sender, EventArgs e)
         {
-            if (!int.TryParse(caseIdTextBox.Text, out int idKoszulki))
+            if (!_fileUploadService.Files.Any())
             {
-                MessageBox.Show("Wprowadź prawidłowy numer koszulki", "Błąd", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Brak plików do wysłania", "Informacja", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
             try
             {
-                EnableControls(false);
-                SetStatus("Wysyłanie plików...", true);
+                using var dialog = new Forms.UploadDialog(
+                    _ezdService,
+                    _fileUploadService,
+                    _fileUploadService.Files.Where(f => f.Status != UploadStatus.Completed)
+                );
 
-                var progress = new Progress<(int fileIndex, int totalFiles, int progress)>(update =>
+                if (dialog.ShowDialog() == DialogResult.OK)
                 {
-                    progressBar.Maximum = update.totalFiles;
-                    progressBar.Value = update.fileIndex;
-                    SetStatus($"Wysyłanie pliku {update.fileIndex} z {update.totalFiles} ({update.progress}%)", true);
-                });
-
-                await _fileUploadService.UploadFiles(idKoszulki, _fileUploadService.Files, progress);
-
-                SetStatus("Pliki zostały wysłane", false);
-                await Task.Delay(2000); // Pokazuj komunikat sukcesu przez 2 sekundy
-                SetStatus("Gotowy", false);
+                    RefreshFilesList();
+                    SetStatus("Pliki zostały wysłane", false);
+                    await Task.Delay(2000); // Pokazuj komunikat sukcesu przez 2 sekundy
+                    SetStatus("Gotowy", false);
+                }
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Błąd podczas wysyłania: {ex.Message}", "Błąd", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 SetStatus("Wystąpił błąd podczas wysyłania", false);
-            }
-            finally
-            {
-                EnableControls(true);
-                RefreshFilesList();
             }
         }
 

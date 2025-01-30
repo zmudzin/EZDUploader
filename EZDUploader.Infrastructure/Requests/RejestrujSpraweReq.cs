@@ -17,8 +17,8 @@ namespace EZDUploader.Infrastructure.Requests
         public int IdSprawy { get; set; }
         public DateTime DataRejestracjiSprawy { get; set; }
         public int IdTeczki { get; set; }
-        public string SymbolTeczki { get; set; } = string.Empty;
-        public string KategoriaArchiwalna { get; set; } = string.Empty;
-        public string TypProwadzenia { get; set; } = string.Empty;
+        public string SymbolTeczki { get; set; }
+        public string KategoriaArchiwalna { get; set; }
+        public string TypProwadzenia { get; set; }
     }
 }

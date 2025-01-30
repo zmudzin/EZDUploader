@@ -38,5 +38,13 @@ namespace EZDUploader.Core.Interfaces
         Task<IEnumerable<PismoDto>> PobierzSprawyTeczki(string symbolTeczki, int rok);
         Task<byte[]> PobierzZalacznik(int idZalacznika);
 
+        Task<DokumentTypeDto> RejestrujDokument(string nazwa, int idKoszulki, int idZalacznika, int idPracownika);
+
+        Task<(PismoDto Koszulka, DokumentTypeDto Dokument)> DodajKoszulkeZPlikiem(
+        string nazwaKoszulki,
+        byte[] plikDane,
+        string nazwaPlikuZRozszerzeniem,
+        int idPracownika);
+
     }
 }

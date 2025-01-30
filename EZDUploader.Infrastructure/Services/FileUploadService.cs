@@ -47,15 +47,35 @@ namespace EZDUploader.Infrastructure.Services
         public async Task UploadFiles(int idKoszulki, IEnumerable<UploadFile> files, IProgress<(int fileIndex, int totalFiles, int progress)> progress = null)
         {
             var filesToUpload = files.ToList();
+            var errors = new List<(UploadFile File, Exception Error)>();
+
             for (int i = 0; i < filesToUpload.Count; i++)
             {
                 var file = filesToUpload[i];
                 try
                 {
                     file.Status = UploadStatus.Uploading;
-                    byte[] content = await File.ReadAllBytesAsync(file.FilePath);
+                    progress?.Report((i + 1, filesToUpload.Count, 0));
 
-                    var docId = await _ezdService.DodajZalacznik(content, file.FileName, _ezdService.CurrentUserId.Value);
+                    // 1. Wczytaj plik
+                    byte[] content = await File.ReadAllBytesAsync(file.FilePath);
+                    progress?.Report((i + 1, filesToUpload.Count, 30));
+
+                    // 2. Dodaj załącznik (zwraca ContentId)
+                    var idZalacznika = await _ezdService.DodajZalacznik(
+                        content,
+                        file.FileName,
+                        _ezdService.CurrentUserId.Value
+                    );
+                    progress?.Report((i + 1, filesToUpload.Count, 60));
+
+                    // 3. Zarejestruj dokument (wiąże załącznik z koszulką)
+                    await _ezdService.RejestrujDokument(
+                        file.FileName,
+                        idKoszulki,
+                        idZalacznika,
+                        _ezdService.CurrentUserId.Value
+                    );
 
                     file.Status = UploadStatus.Completed;
                     progress?.Report((i + 1, filesToUpload.Count, 100));
@@ -64,8 +84,14 @@ namespace EZDUploader.Infrastructure.Services
                 {
                     file.Status = UploadStatus.Failed;
                     file.ErrorMessage = ex.Message;
-                    throw;
+                    errors.Add((file, ex));
                 }
+            }
+
+            if (errors.Any())
+            {
+                var errorMessage = string.Join("\n", errors.Select(e => $"- {e.File.FileName}: {e.Error.Message}"));
+                throw new AggregateException($"Błąd podczas wysyłania plików:\n{errorMessage}", errors.Select(e => e.Error));
             }
         }
 

@@ -34,6 +34,7 @@ namespace EZDUploader.UI
             this.ClientSize = new System.Drawing.Size(1024, 768);  // Zmieniam rozmiar okna
             this.MinimumSize = new System.Drawing.Size(800, 600);  // Dodaję minimalny rozmiar
             this.Text = "EZD Uploader";
+
         }
         #endregion
     }
