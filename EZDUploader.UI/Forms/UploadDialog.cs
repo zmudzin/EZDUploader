@@ -149,30 +149,29 @@ namespace EZDUploader.UI.Forms
 
         private async void LoadExistingFolders()
         {
-            try 
+            try
             {
                 _existingFoldersCombo.Items.Clear();
                 _existingFoldersCombo.Items.Add("Ładowanie...");
                 _existingFoldersCombo.SelectedIndex = 0;
                 _existingFoldersCombo.Enabled = false;
 
-                var folders = await _ezdService.PobierzIdentyfikatoryKoszulek(_ezdService.CurrentUserId.Value);
+                var koszulki = await _ezdService.PobierzIdentyfikatoryKoszulek(_ezdService.CurrentUserId.Value);
                 _existingFoldersCombo.Items.Clear();
 
-                foreach(var folderId in folders)
+                foreach (var koszulka in koszulki)
                 {
-                    var folder = await _ezdService.PobierzKoszulkePoId(folderId);
-                    _existingFoldersCombo.Items.Add(new FolderItem(folder));
+                    _existingFoldersCombo.Items.Add(new FolderItem(koszulka));
                 }
 
                 if (_existingFoldersCombo.Items.Count > 0)
                 {
                     _existingFoldersCombo.SelectedIndex = 0;
                 }
-                
+
                 _existingFoldersCombo.Enabled = _existingFolderRadio.Checked;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 MessageBox.Show("Błąd podczas pobierania listy koszulek: " + ex.Message,
                     "Błąd", MessageBoxButtons.OK, MessageBoxIcon.Error);

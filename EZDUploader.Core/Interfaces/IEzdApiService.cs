@@ -32,7 +32,7 @@ namespace EZDUploader.Core.Interfaces
         Task<int> PrzekazKoszulke(int idKoszulki, int idPracownikaDocelowego, int idPracownikaZrodlowego);
 
         Task<TeczkaRwaDto> PobierzRwaPoRoczniku(int rok);
-        Task<IEnumerable<int>> PobierzIdentyfikatoryKoszulek(int idPracownika);
+        Task<IEnumerable<PismoDto>> PobierzIdentyfikatoryKoszulek(int idPracownika);
 
         Task<IEnumerable<DokumentTypeDto>> PobierzDokumentyKoszulki(int idKoszulki);
         Task<IEnumerable<PismoDto>> PobierzSprawyTeczki(string symbolTeczki, int rok);

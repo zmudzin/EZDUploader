@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Security.Cryptography;
 using System.Diagnostics;
+using EZDUploader.Infrastructure.Converters;
 
 namespace EZDUploader.Infrastructure.Services
 {
@@ -36,7 +37,8 @@ namespace EZDUploader.Infrastructure.Services
 
             _jsonOptions = new JsonSerializerOptions
             {
-                PropertyNameCaseInsensitive = true
+                PropertyNameCaseInsensitive = true,
+                Converters = { new Converters.MicrosoftDateTimeConverter() }
             };
         }
 
@@ -65,21 +67,23 @@ namespace EZDUploader.Infrastructure.Services
             }
         }
 
-        public async Task<IEnumerable<int>> PobierzIdentyfikatoryKoszulek(int idPracownika)
+        public async Task<IEnumerable<PismoDto>> PobierzIdentyfikatoryKoszulek(int idPracownika)
         {
             EnsureAuthenticated();
             var request = new
             {
-                IdPracownikaWlasciciela = idPracownika,
-                CID = 1,
-                Role = new string[] { }
+                IdPracownikaWlasciciela = idPracownika
             };
-            try {
-            var response = await PostAsync<PobierzIdentyfikatoryKoszulekResponse>("api1/PobierzIdentyfikatoryKoszulekRequest", request);
-            return response?.Koszulki ?? new List<int>();
-            } catch (HttpRequestException ex) when (ex.Message.Contains("404")) {
-                Debug.WriteLine("Nie znaleziono koszulek - zwracam pustą listę");
-                return new List<int>();
+
+            try
+            {
+                var response = await PostAsync<PobierzKoszulkiResponse>("Koszulka/PobierzKoszulki", request);
+                return response?.Pisma ?? new List<PismoDto>();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Błąd podczas pobierania koszulek: {ex.Message}");
+                return new List<PismoDto>();
             }
         }
 
