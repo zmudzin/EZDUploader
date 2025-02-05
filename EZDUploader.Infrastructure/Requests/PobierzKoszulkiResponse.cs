@@ -7,9 +7,11 @@ using EZDUploader.Core.Models;
 
 namespace EZDUploader.Infrastructure.Requests
 {
-    public class PobierzKoszulkiResponse : ResponseBaseDto
+    public class PobierzKoszulkiResponse
     {
         public List<PismoDto> Pisma { get; set; }
         public string ResultMessage { get; set; }
+        public bool Success { get; set; }
+        public string ErrorMessage { get; set; }
     }
 }

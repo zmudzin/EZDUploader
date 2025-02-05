@@ -2,6 +2,7 @@ using System.Windows.Forms;
 using System.Drawing;
 using EZDUploader.Core.Interfaces;
 using EZDUploader.Core.Models;
+using EZDUploader.Core.Validators;
 
 namespace EZDUploader.UI.Forms
 {
@@ -9,6 +10,7 @@ namespace EZDUploader.UI.Forms
     {
         private readonly IEzdApiService _ezdService;
         private readonly IFileUploadService _fileUploadService;
+        private readonly IFileValidator _fileValidator;
         private readonly IEnumerable<UploadFile> _files;
 
         private RadioButton _newFolderRadio;
@@ -18,23 +20,37 @@ namespace EZDUploader.UI.Forms
         private Button _uploadButton;
         private Button _cancelButton;
         private ProgressBar _progressBar;
+        private CheckBox _noBrakDaty;
+        private CheckBox _noBrakZnaku;
         private Label _statusLabel;
 
-        public UploadDialog(IEzdApiService ezdService, IFileUploadService fileUploadService, 
+        public UploadDialog(IEzdApiService ezdService,
+            IFileUploadService fileUploadService,
+            IFileValidator fileValidator,
             IEnumerable<UploadFile> files)
         {
             _ezdService = ezdService;
             _fileUploadService = fileUploadService;
+            _fileValidator = fileValidator;
             _files = files;
-            
+
             InitializeComponents();
             LoadExistingFolders();
+        }
+
+        private static IEnumerable<UploadFile> ConvertToUploadFiles(string[] filePaths)
+        {
+            return filePaths.Select(path => new UploadFile
+            {
+                FilePath = path,
+                FileName = Path.GetFileName(path)
+            });
         }
 
         private void InitializeComponents()
         {
             Text = "Wyślij pliki do EZD";
-            Size = new Size(400, 300);
+            Size = new Size(400, 350);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -104,15 +120,31 @@ namespace EZDUploader.UI.Forms
             _uploadButton = new Button
             {
                 Text = "Wyślij",
-                Location = new Point(210, 220),
+                Location = new Point(210, 250),
                 Width = 75,
                 DialogResult = DialogResult.None
+            };
+
+            _noBrakDaty = new CheckBox
+            {
+                Text = "Brak daty na piśmie",
+                Location = new Point(10, 150),
+                Checked = true,  // domyślnie zaznaczone
+                AutoSize = true
+            };
+
+            _noBrakZnaku = new CheckBox
+            {
+                Text = "Brak znaku pisma",
+                Location = new Point(200, 150),
+                Checked = true,  // domyślnie zaznaczone
+                AutoSize = true
             };
 
             _cancelButton = new Button
             {
                 Text = "Anuluj",
-                Location = new Point(295, 220),
+                Location = new Point(295, 250),
                 Width = 75,
                 DialogResult = DialogResult.Cancel
             };
@@ -138,6 +170,8 @@ namespace EZDUploader.UI.Forms
                 nameInfoLabel,
                 _existingFolderRadio,
                 _existingFoldersCombo,
+                _noBrakDaty,
+                _noBrakZnaku,
                 _progressBar,
                 _statusLabel,
                 _uploadButton,
@@ -180,6 +214,16 @@ namespace EZDUploader.UI.Forms
 
         private async void uploadButton_Click(object sender, EventArgs e)
         {
+            foreach (var file in _files)
+            {
+                var validationError = _fileValidator.GetFileValidationError(file.FileName);
+                if (validationError != null)
+                {
+                    MessageBox.Show($"Plik {file.FileName}: {validationError}",
+                        "Błąd walidacji", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+            }
             // Walidacja - czy wybrano sposób dodawania
             if (_newFolderRadio.Checked && string.IsNullOrWhiteSpace(_newFolderNameBox.Text))
             {
@@ -235,6 +279,13 @@ namespace EZDUploader.UI.Forms
                     _progressBar.Value = newValue;
                     _statusLabel.Text = $"Wysyłanie pliku {update.fileIndex} z {update.totalFiles} ({update.progress}%)";
                 });
+
+                // Przekazanie stanu checkboxów do plików przed wysłaniem
+                foreach (var file in _files)
+                {
+                    file.BrakDaty = _noBrakDaty.Checked;
+                    file.BrakZnaku = _noBrakZnaku.Checked;
+                }
 
                 await _fileUploadService.UploadFiles(folderId, _files, progress);
 

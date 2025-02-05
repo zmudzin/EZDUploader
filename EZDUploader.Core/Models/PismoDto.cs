@@ -12,5 +12,4 @@ public class PismoDto
     public DateTime? TerminPisma { get; set; }
     public required bool KoszulkaWrazliwa { get; set; }
     public required bool CzyZarchiwizowany { get; set; }
-    public StanowiskoDto? TworcaStanowisko { get; set; }
 }

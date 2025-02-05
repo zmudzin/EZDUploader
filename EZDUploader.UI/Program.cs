@@ -3,13 +3,16 @@ using EZDUploader.Core.Configuration;
 using EZDUploader.Core.Interfaces;
 using EZDUploader.Infrastructure.Services;
 using System.Windows.Forms;
+using EZDUploader.UI.Forms;
+using EZDUploader.Core.Models;
+using EZDUploader.Core.Validators;
 
 namespace EZDUploader.UI;
 
 static class Program
 {
     [STAThread]
-    static void Main()
+    static void Main(string[] args)
     {
         Application.SetHighDpiMode(HighDpiMode.SystemAware);
         Application.EnableVisualStyles();
@@ -23,8 +26,24 @@ static class Program
         try
         {
             var ezdService = serviceProvider.GetRequiredService<IEzdApiService>();
-            var mainForm = serviceProvider.GetRequiredService<MainForm>();
-            Application.Run(mainForm);
+            var fileUploadService = serviceProvider.GetRequiredService<IFileUploadService>();
+
+            if (args?.Length > 0)
+            {
+                var fileValidator = serviceProvider.GetRequiredService<IFileValidator>();
+                var uploadDialog = new Forms.UploadDialog(
+                    ezdService,
+                    fileUploadService,
+                    serviceProvider.GetRequiredService<IFileValidator>(),
+                    FileExtensions.ToUploadFiles(args)
+                );
+                Application.Run(uploadDialog);
+            }
+            else
+            {
+                var mainForm = serviceProvider.GetRequiredService<MainForm>();
+                Application.Run(mainForm);
+            }
         }
         catch (Exception ex)
         {
@@ -42,6 +61,7 @@ static class Program
         // Serwisy
         services.AddSingleton<IEzdApiService, EzdApiService>();
         services.AddSingleton<IFileUploadService, FileUploadService>();
+        services.AddSingleton<IFileValidator, FileValidator>();
 
         // Forms
         services.AddTransient<MainForm>();

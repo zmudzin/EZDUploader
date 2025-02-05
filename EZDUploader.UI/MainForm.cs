@@ -6,6 +6,7 @@ using System.Diagnostics;
 using EZDUploader.Core.Interfaces;
 using EZDUploader.Core.Configuration;
 using EZDUploader.Core.Models;
+using EZDUploader.Core.Validators;
 
 namespace EZDUploader.UI
 {
@@ -14,6 +15,7 @@ namespace EZDUploader.UI
     {
         private readonly IFileUploadService _fileUploadService;
         private readonly IEzdApiService _ezdService;
+        private readonly IFileValidator _fileValidator;
 
         // Kontrolki UI
         private MenuStrip menuStrip;
@@ -28,11 +30,12 @@ namespace EZDUploader.UI
         private Button uploadButton;
         private ContextMenuStrip contextMenu;
 
-        public MainForm(IFileUploadService fileUploadService, IEzdApiService ezdService)
+        public MainForm(IFileUploadService fileUploadService, IEzdApiService ezdService, IFileValidator fileValidator)
         {
             InitializeComponent();  // Najpierw wywołujemy metodę designera
             _fileUploadService = fileUploadService;
             _ezdService = ezdService;
+            _fileValidator = fileValidator;
             filesListView = new ListView();
             InitializeUI();        // Potem nasza inicjalizacja
             InitializeEvents();
@@ -134,13 +137,7 @@ namespace EZDUploader.UI
                 GridLines = true,
                 BackColor = SystemColors.Window  // Dodajemy kolor tła dla widoczności
             };
-            filesListView.Columns.AddRange(new[]
-            {
-    new ColumnHeader { Text = "Nazwa pliku", Width = 300 },
-    new ColumnHeader { Text = "Rozmiar", Width = 100 },
-    new ColumnHeader { Text = "Data", Width = 150 },
-    new ColumnHeader { Text = "Rodzaj", Width = 150 }
-});
+
 
             // Podpięcie zdarzeń drag&drop
             filesListView.DragEnter += FilesListView_DragEnter;
@@ -171,9 +168,10 @@ namespace EZDUploader.UI
             filesListView.Columns.Clear();
             filesListView.Columns.AddRange(new[]
             {
-    new ColumnHeader { Text = "Nazwa pliku", Width = 300 },
+    new ColumnHeader { Text = "Tytuł", Width = 300 },
     new ColumnHeader { Text = "Rozmiar", Width = 100 },
-    new ColumnHeader { Text = "Data", Width = 150 },
+    new ColumnHeader { Text = "Data na piśmie", Width = 150 },
+    new ColumnHeader { Text = "Znak pisma", Width = 150 },
     new ColumnHeader { Text = "Rodzaj", Width = 150 }
 });
             filesListView.LabelEdit = true;
@@ -213,6 +211,7 @@ namespace EZDUploader.UI
             contextMenu.Items.Add("Usuń", null, RemoveFiles_Click);
             contextMenu.Items.Add("Zmień nazwę", null, RenameFiles_Click);
             contextMenu.Items.Add("Zmień datę", null, ChangeDates_Click);
+            contextMenu.Items.Add("Zmień znak pisma", null, ChangeSignature_Click);
             contextMenu.Items.Add("Zmień rodzaj", null, ChangeTypes_Click);
             filesListView.ContextMenuStrip = contextMenu;
 
@@ -267,7 +266,7 @@ namespace EZDUploader.UI
             if (filesListView.SelectedItems.Count == 0) return;
 
             var firstFile = (UploadFile)filesListView.SelectedItems[0].Tag;
-            using var dialog = new DatePickerDialog("Zmiana daty", firstFile.AddedDate);
+            using var dialog = new DateOptionsDialog("Zmiana daty", firstFile.AddedDate, firstFile.BrakDaty);
 
             if (dialog.ShowDialog() == DialogResult.OK)
             {
@@ -275,8 +274,83 @@ namespace EZDUploader.UI
                 {
                     var file = (UploadFile)item.Tag;
                     file.AddedDate = dialog.SelectedDate;
+                    file.BrakDaty = dialog.BrakDaty;
                 }
                 RefreshFilesList();
+            }
+        }
+
+        private void ChangeSignature_Click(object sender, EventArgs e)
+        {
+            if (filesListView.SelectedItems.Count == 0) return;
+
+            var firstFile = (UploadFile)filesListView.SelectedItems[0].Tag;
+            using var dialog = new SignatureOptionsDialog("Znak pisma", firstFile.NumerPisma);
+
+            if (dialog.ShowDialog() == DialogResult.OK)
+            {
+                foreach (ListViewItem item in filesListView.SelectedItems)
+                {
+                    var file = (UploadFile)item.Tag;
+                    file.NumerPisma = dialog.SignatureNumber;
+                }
+                RefreshFilesList();
+            }
+        }
+
+        private class DateOptionsDialog : Form
+        {
+            private DateTimePicker datePicker;
+            private CheckBox noBrakDaty;
+            public DateTime SelectedDate => datePicker.Value;
+            public bool BrakDaty => noBrakDaty.Checked;
+
+            public DateOptionsDialog(string title, DateTime defaultDate, bool brakDaty = true)
+            {
+                Text = title;
+                Size = new Size(300, 200);
+                StartPosition = FormStartPosition.CenterParent;
+                MinimizeBox = false;
+                MaximizeBox = false;
+                FormBorderStyle = FormBorderStyle.FixedDialog;
+
+                datePicker = new DateTimePicker
+                {
+                    Format = DateTimePickerFormat.Short,
+                    Value = defaultDate,
+                    Location = new Point(10, 20),
+                    Width = 260
+                };
+
+                noBrakDaty = new CheckBox
+                {
+                    Text = "Brak daty na piśmie",
+                    Location = new Point(10, 50),
+                    Checked = brakDaty
+                };
+
+                noBrakDaty.CheckedChanged += (s, e) => datePicker.Enabled = !noBrakDaty.Checked;
+
+                var okButton = new Button
+                {
+                    Text = "OK",
+                    DialogResult = DialogResult.OK,
+                    Location = new Point(100, 110)
+                };
+
+                var cancelButton = new Button
+                {
+                    Text = "Anuluj",
+                    DialogResult = DialogResult.Cancel,
+                    Location = new Point(190, 110)
+                };
+
+                AcceptButton = okButton;
+                CancelButton = cancelButton;
+                Controls.AddRange(new Control[] { datePicker, noBrakDaty, okButton, cancelButton });
+
+                // Ustaw początkowy stan kontrolki daty
+                datePicker.Enabled = !brakDaty;
             }
         }
 
@@ -454,9 +528,22 @@ namespace EZDUploader.UI
 
             var selectedFiles = filesListView.SelectedItems.Cast<ListViewItem>()
                 .Select(item => (UploadFile)item.Tag)
-                .Where(f => f.Status != UploadStatus.Completed);
+                .Where(f => f.Status != UploadStatus.Completed)
+                .ToList();
 
-            using var dialog = new Forms.UploadDialog(_ezdService, _fileUploadService, selectedFiles);
+            // Walidacja przed otwarciem dialogu
+            foreach (var file in selectedFiles)
+            {
+                var validationError = _fileValidator.GetFileValidationError(file.FileName);
+                if (validationError != null)
+                {
+                    MessageBox.Show($"Błąd walidacji pliku {file.FileName}: {validationError}",
+                        "Błąd", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+            }
+
+            using var dialog = new Forms.UploadDialog(_ezdService, _fileUploadService, _fileValidator, selectedFiles);
             if (dialog.ShowDialog() == DialogResult.OK)
             {
                 RefreshFilesList();
@@ -574,7 +661,8 @@ namespace EZDUploader.UI
             {
                 var item = new ListViewItem(file.FileName);
                 item.SubItems.Add(FormatFileSize(file.FileSize));
-                item.SubItems.Add(file.AddedDate.ToString("yyyy-MM-dd"));
+                item.SubItems.Add(file.BrakDaty ? "Brak daty" : file.AddedDate.ToString("yyyy-MM-dd"));
+                item.SubItems.Add(file.BrakZnaku ? "Brak znaku" : (file.NumerPisma ?? "-"));
                 item.SubItems.Add(file.DocumentType ?? "-");
                 item.Tag = file;
 
@@ -639,10 +727,11 @@ namespace EZDUploader.UI
             try
             {
                 using var dialog = new Forms.UploadDialog(
-                    _ezdService,
-                    _fileUploadService,
-                    _fileUploadService.Files.Where(f => f.Status != UploadStatus.Completed)
-                );
+                 _ezdService,
+                 _fileUploadService,
+                 _fileValidator,
+                 _fileUploadService.Files.Where(f => f.Status != UploadStatus.Completed)
+             );
 
                 if (dialog.ShowDialog() == DialogResult.OK)
                 {
@@ -746,6 +835,65 @@ namespace EZDUploader.UI
                 AcceptButton = okButton;
                 CancelButton = cancelButton;
                 Controls.AddRange(new Control[] { datePicker, okButton, cancelButton });
+            }
+        }
+
+        private class SignatureOptionsDialog : Form
+        {
+            private TextBox signatureBox;
+            private CheckBox noSignatureCheck;
+            public string SignatureNumber => noSignatureCheck.Checked ? null : signatureBox.Text;
+
+            public SignatureOptionsDialog(string title, string currentSignature = null)
+            {
+                Text = title;
+                Size = new Size(400, 200);
+                StartPosition = FormStartPosition.CenterParent;
+                MinimizeBox = false;
+                MaximizeBox = false;
+                FormBorderStyle = FormBorderStyle.FixedDialog;
+
+                noSignatureCheck = new CheckBox
+                {
+                    Text = "Brak znaku pisma",
+                    Location = new Point(10, 20),
+                    Checked = string.IsNullOrEmpty(currentSignature),
+                    AutoSize = true
+                };
+
+                signatureBox = new TextBox
+                {
+                    Text = currentSignature,
+                    Location = new Point(10, 50),
+                    Width = 360,
+                    Enabled = !string.IsNullOrEmpty(currentSignature)
+                };
+
+                noSignatureCheck.CheckedChanged += (s, e) =>
+                    signatureBox.Enabled = !noSignatureCheck.Checked;
+
+                var okButton = new Button
+                {
+                    Text = "OK",
+                    DialogResult = DialogResult.OK,
+                    Location = new Point(200, 110)
+                };
+
+                var cancelButton = new Button
+                {
+                    Text = "Anuluj",
+                    DialogResult = DialogResult.Cancel,
+                    Location = new Point(290, 110)
+                };
+
+                AcceptButton = okButton;
+                CancelButton = cancelButton;
+                Controls.AddRange(new Control[] {
+            noSignatureCheck,
+            signatureBox,
+            okButton,
+            cancelButton
+        });
             }
         }
 

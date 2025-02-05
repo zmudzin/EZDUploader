@@ -28,23 +28,33 @@ namespace EZDUploader.Core.Interfaces
         // Operacje na sprawach
         Task<RejestrujSpraweResponse> RejestrujSprawe(string teczkaSymbol, int idKoszulki, int idPracownika, string uwagi = "");
 
-        // Operacje przekazywania
-        Task<int> PrzekazKoszulke(int idKoszulki, int idPracownikaDocelowego, int idPracownikaZrodlowego);
-
-        Task<TeczkaRwaDto> PobierzRwaPoRoczniku(int rok);
         Task<IEnumerable<PismoDto>> PobierzIdentyfikatoryKoszulek(int idPracownika);
 
-        Task<IEnumerable<DokumentTypeDto>> PobierzDokumentyKoszulki(int idKoszulki);
-        Task<IEnumerable<PismoDto>> PobierzSprawyTeczki(string symbolTeczki, int rok);
-        Task<byte[]> PobierzZalacznik(int idZalacznika);
+        Task<DokumentTypeDto> RejestrujDokument(
+            string nazwa,
+            int idKoszulki,
+            int idZalacznika,
+            int idPracownika,
+            bool brakDaty = true,
+            bool brakZnaku = true);
 
-        Task<DokumentTypeDto> RejestrujDokument(string nazwa, int idKoszulki, int idZalacznika, int idPracownika);
+        Task<bool> AktualizujMetadaneDokumentu(DokumentTypeDto dokument);
+        Task<bool> AktualizujMetadaneDokumentu(
+        int idDokumentu,
+        string tytul,
+        string rodzaj,
+        string znakPisma,
+        DateTime? dataDokumentu,
+        bool brakDaty = false,
+        bool brakZnaku = false);
 
         Task<(PismoDto Koszulka, DokumentTypeDto Dokument)> DodajKoszulkeZPlikiem(
-        string nazwaKoszulki,
-        byte[] plikDane,
-        string nazwaPlikuZRozszerzeniem,
-        int idPracownika);
+            string nazwaKoszulki,
+            byte[] plikDane,
+            string nazwaPlikuZRozszerzeniem,
+            int idPracownika,
+            bool brakDaty = true,
+            bool brakZnaku = true);
 
     }
 }

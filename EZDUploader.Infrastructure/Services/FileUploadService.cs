@@ -2,17 +2,20 @@
 using EZDUploader.Core.Models;
 using EZDUploader.Core.Interfaces;
 using EZDUploader.Core.Models;
+using EZDUploader.Core.Validators;
 
 namespace EZDUploader.Infrastructure.Services
 {
     public class FileUploadService : IFileUploadService
     {
         private readonly IEzdApiService _ezdService;
+        private readonly IFileValidator _fileValidator;
         private readonly List<UploadFile> _files = new();
 
-        public FileUploadService(IEzdApiService ezdService)
+        public FileUploadService(IEzdApiService ezdService, IFileValidator fileValidator)
         {
             _ezdService = ezdService;
+            _fileValidator = fileValidator;
         }
 
         public IReadOnlyList<UploadFile> Files => _files.AsReadOnly();
@@ -35,6 +38,7 @@ namespace EZDUploader.Infrastructure.Services
                 });
             }
         }
+
         public Task RemoveFiles(IEnumerable<UploadFile> files)
         {
             foreach (var file in files.ToList())
@@ -47,6 +51,14 @@ namespace EZDUploader.Infrastructure.Services
         public async Task UploadFiles(int idKoszulki, IEnumerable<UploadFile> files, IProgress<(int fileIndex, int totalFiles, int progress)> progress = null)
         {
             var filesToUpload = files.ToList();
+            foreach (var file in filesToUpload)
+            {
+                var validationError = _fileValidator.GetFileValidationError(file.FileName);
+                if (validationError != null)
+                {
+                    throw new ArgumentException($"Błąd walidacji pliku {file.FileName}: {validationError}");
+                }
+            }
             var errors = new List<(UploadFile File, Exception Error)>();
 
             for (int i = 0; i < filesToUpload.Count; i++)
@@ -57,11 +69,9 @@ namespace EZDUploader.Infrastructure.Services
                     file.Status = UploadStatus.Uploading;
                     progress?.Report((i + 1, filesToUpload.Count, 0));
 
-                    // 1. Wczytaj plik
                     byte[] content = await File.ReadAllBytesAsync(file.FilePath);
                     progress?.Report((i + 1, filesToUpload.Count, 30));
 
-                    // 2. Dodaj załącznik (zwraca ContentId)
                     var idZalacznika = await _ezdService.DodajZalacznik(
                         content,
                         file.FileName,
@@ -69,13 +79,19 @@ namespace EZDUploader.Infrastructure.Services
                     );
                     progress?.Report((i + 1, filesToUpload.Count, 60));
 
-                    // 3. Zarejestruj dokument (wiąże załącznik z koszulką)
-                    await _ezdService.RejestrujDokument(
+                    var dokument = await _ezdService.RejestrujDokument(
                         file.FileName,
                         idKoszulki,
                         idZalacznika,
                         _ezdService.CurrentUserId.Value
                     );
+
+                    if (!string.IsNullOrEmpty(file.DocumentType) || file.AddedDate != default)
+                    {
+                        dokument.Rodzaj = file.DocumentType;
+                        dokument.DataDokumentu = file.AddedDate.ToString("yyyy-MM-dd");
+                        await _ezdService.AktualizujMetadaneDokumentu(dokument);
+                    }
 
                     file.Status = UploadStatus.Completed;
                     progress?.Report((i + 1, filesToUpload.Count, 100));
