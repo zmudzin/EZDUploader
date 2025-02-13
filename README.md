@@ -1,7 +1,3 @@
-Najpierw sprawdzę zawartość pliku MainForm.cs.
-
-Na podstawie kodu z MainForm.cs i dokumentacji API, przygotowałem README po polsku:
-
 # EZD Uploader - Elektroniczne Zarządzanie Dokumentami
 
 ## Opis Systemu
