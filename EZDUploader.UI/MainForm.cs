@@ -7,6 +7,7 @@ using EZDUploader.Core.Interfaces;
 using EZDUploader.Core.Configuration;
 using EZDUploader.Core.Models;
 using EZDUploader.Core.Validators;
+using EZDUploader.UI.Forms;
 
 namespace EZDUploader.UI
 {
@@ -175,7 +176,6 @@ namespace EZDUploader.UI
     new ColumnHeader { Text = "Rodzaj", Width = 150 }
 });
             filesListView.LabelEdit = true;
-            filesListView.LabelEdit = true;
             filesListView.DoubleClick += FilesListView_DoubleClick;
             filesListView.MouseClick += FilesListView_MouseClick;
             InitializeContextMenu();
@@ -206,13 +206,11 @@ namespace EZDUploader.UI
         private void InitializeContextMenu()
         {
             contextMenu = new ContextMenuStrip();
+            contextMenu.Items.Add("Edytuj", null, EditDocument_Click);
+            contextMenu.Items.Add("-");
             contextMenu.Items.Add("Wyślij do EZD", null, SendToEzd_Click);
             contextMenu.Items.Add("-");
             contextMenu.Items.Add("Usuń", null, RemoveFiles_Click);
-            contextMenu.Items.Add("Zmień nazwę", null, RenameFiles_Click);
-            contextMenu.Items.Add("Zmień datę", null, ChangeDates_Click);
-            contextMenu.Items.Add("Zmień znak pisma", null, ChangeSignature_Click);
-            contextMenu.Items.Add("Zmień rodzaj", null, ChangeTypes_Click);
             filesListView.ContextMenuStrip = contextMenu;
 
             // Aktualizuj dostępność menu kontekstowego
@@ -406,32 +404,22 @@ namespace EZDUploader.UI
             if (hitTest.Item == null) return;
 
             var columnIndex = GetClickedColumn();
-            var file = (UploadFile)hitTest.Item.Tag;
 
-            if (columnIndex == 2) // Data
-            {
-                using var datePicker = new DateTimePicker
-                {
-                    Format = DateTimePickerFormat.Short,
-                    Value = file.AddedDate,
-                    Location = filesListView.PointToScreen(e.Location)
-                };
-                datePicker.CloseUp += (s, args) =>
-                {
-                    file.AddedDate = datePicker.Value.Date;
-                    RefreshFilesList();
-                    datePicker.Dispose();
-                };
-                datePicker.Show();
-            }
         }
 
-        private void EnableControls(bool enabled)
+        private void EditDocument_Click(object sender, EventArgs e)
         {
-            filesListView.Enabled = enabled;
-            uploadButton.Enabled = enabled;
-            caseIdTextBox.Enabled = enabled;
-            toolStrip.Enabled = enabled;
+            if (filesListView.SelectedItems.Count == 0) return;
+
+            var selectedFiles = filesListView.SelectedItems.Cast<ListViewItem>()
+                .Select(item => (UploadFile)item.Tag)
+                .ToList();
+
+            using var dialog = new DocumentEditDialog(selectedFiles);
+            if (dialog.ShowDialog() == DialogResult.OK)
+            {
+                RefreshFilesList();
+            }
         }
 
         private void FilesListView_DoubleClick(object sender, EventArgs e)
@@ -441,39 +429,79 @@ namespace EZDUploader.UI
             var file = (UploadFile)filesListView.SelectedItems[0].Tag;
             var clickedColumn = GetClickedColumn();
 
-            if (clickedColumn == 3) // Kolumna "Rodzaj"
+            switch (clickedColumn)
             {
-                using var form = new ComboBoxDialog("Wybierz rodzaj dokumentu", new[]
-                {
-            "Pismo", "Notatka", "Wniosek", "Decyzja", "Inny"
-        });
-
-                if (form.ShowDialog() == DialogResult.OK)
-                {
-                    file.DocumentType = form.SelectedValue;
-                    RefreshFilesList();
-                }
-            }
-            else // Pozostałe kolumny - otwórz plik
-            {
-                try
-                {
-                    var startInfo = new ProcessStartInfo
+                case 0: // Tytuł
+                case 1: // Rozmiar
+                    if (!string.IsNullOrEmpty(file.FilePath))
                     {
-                        FileName = file.FilePath,
-                        UseShellExecute = true
-                    };
-                    Process.Start(startInfo);
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Nie można otworzyć pliku: {ex.Message}", "Błąd",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
+                        try
+                        {
+                            var startInfo = new ProcessStartInfo
+                            {
+                                FileName = file.FilePath,
+                                UseShellExecute = true
+                            };
+                            Process.Start(startInfo);
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show($"Nie można otworzyć pliku: {ex.Message}", "Błąd",
+                                MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }
+                    break;
+
+                case 2: // Data na piśmie
+                    using (var dialog = new DateOptionsDialog("Zmiana daty", file.AddedDate, file.BrakDaty))
+                    {
+                        if (dialog.ShowDialog() == DialogResult.OK)
+                        {
+                            foreach (ListViewItem item in filesListView.SelectedItems)
+                            {
+                                var selectedFile = (UploadFile)item.Tag;
+                                selectedFile.AddedDate = dialog.SelectedDate;
+                                selectedFile.BrakDaty = dialog.BrakDaty;
+                            }
+                            RefreshFilesList();
+                        }
+                    }
+                    break;
+
+                case 3: // Znak pisma
+                    using (var dialog = new SignatureOptionsDialog("Znak pisma", file.NumerPisma))
+                    {
+                        if (dialog.ShowDialog() == DialogResult.OK)
+                        {
+                            foreach (ListViewItem item in filesListView.SelectedItems)
+                            {
+                                var selectedFile = (UploadFile)item.Tag;
+                                selectedFile.NumerPisma = dialog.SignatureNumber;
+                            }
+                            RefreshFilesList();
+                        }
+                    }
+                    break;
+
+                case 4: // Rodzaj dokumentu
+                    using (var dialog = new ComboBoxDialog("Wybierz rodzaj dokumentu", new[]
+                    {
+                "Pismo", "Notatka", "Wniosek", "Decyzja", "Opinia", "Zaświadczenie", "Inny"
+            }))
+                    {
+                        if (dialog.ShowDialog() == DialogResult.OK)
+                        {
+                            foreach (ListViewItem item in filesListView.SelectedItems)
+                            {
+                                var selectedFile = (UploadFile)item.Tag;
+                                selectedFile.DocumentType = dialog.SelectedValue;
+                            }
+                            RefreshFilesList();
+                        }
+                    }
+                    break;
             }
         }
-
-
 
         // Pomocniczy formularz do wyboru typu dokumentu
         public class ComboBoxDialog : Form
@@ -614,6 +642,14 @@ namespace EZDUploader.UI
             {
                 e.Effect = DragDropEffects.None;
             }
+        }
+
+        private void EnableControls(bool enabled)
+        {
+            filesListView.Enabled = enabled;
+            uploadButton.Enabled = enabled;
+            caseIdTextBox.Enabled = enabled;
+            toolStrip.Enabled = enabled;
         }
 
         private async void FilesListView_DragDrop(object sender, DragEventArgs e)
