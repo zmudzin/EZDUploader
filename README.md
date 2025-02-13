@@ -68,14 +68,3 @@ Przed pierwszym użyciem skonfiguruj:
 - Framework: .NET
 - Biblioteki: ServiceStack, Windows Forms
 
-## Autor
-
-Podlaski Urząd Wojewódzki w Białymstoku
-
-## Licencja
-
-[Do uzupełnienia - skontaktuj się z właścicielem projektu]
-
-## Uwagi
-
-Dokumentacja techniczna i kod źródłowy mogą podlegać zmianom. Zawsze sprawdzaj najnowszą wersję.
