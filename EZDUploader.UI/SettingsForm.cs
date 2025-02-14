@@ -202,11 +202,14 @@ namespace EZDUploader.UI
             if (_settings.AuthType == AuthenticationType.Token)
             {
                 _settings.ApplicationToken = textBoxToken.Text;
+                _settings.Login = string.Empty;
+                _settings.Password = string.Empty;
             }
             else
             {
+                _settings.ApplicationToken = string.Empty;
                 _settings.Login = textBoxLogin.Text;
-                _settings.Password = textBoxPassword.Text;
+                _settings.Password = textBoxPassword.Text; // Hasło zapisujemy jako plain text
             }
         }
         private void SaveButton_Click(object sender, EventArgs e)

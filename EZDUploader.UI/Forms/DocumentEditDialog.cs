@@ -4,6 +4,8 @@ using System.Drawing;
 using System.Linq;
 using System.Collections.Generic;
 using EZDUploader.Core.Models;
+using EZDUploader.Core.Configuration;
+using System.Runtime;
 
 namespace EZDUploader.UI.Forms
 {
@@ -18,10 +20,12 @@ namespace EZDUploader.UI.Forms
         private Button okButton;
         private Button cancelButton;
         private readonly List<UploadFile> _files;
+        private readonly ApiSettings _settings;
 
         public DocumentEditDialog(List<UploadFile> files)
         {
             _files = files;
+            _settings = ConfigurationManager.LoadSettings();
             InitializeComponents();
             LoadFilesData();
             Text = _files.Count == 1
@@ -45,8 +49,11 @@ namespace EZDUploader.UI.Forms
 
                 if (!string.IsNullOrEmpty(file.DocumentType))
                 {
-                    var index = documentTypeCombo.Items.IndexOf(file.DocumentType);
-                    documentTypeCombo.SelectedIndex = index >= 0 ? index : 0;
+                    var item = _settings.DocumentTypes.FirstOrDefault(t => t.Name == file.DocumentType);
+                    if (item != null)
+                    {
+                        documentTypeCombo.SelectedItem = item;
+                    }
                 }
             }
             else
@@ -69,8 +76,8 @@ namespace EZDUploader.UI.Forms
                     var docType = _files[0].DocumentType;
                     if (!string.IsNullOrEmpty(docType))
                     {
-                        var index = documentTypeCombo.Items.IndexOf(docType);
-                        documentTypeCombo.SelectedIndex = index >= 0 ? index : 0;
+                        var item = _settings.DocumentTypes.FirstOrDefault(t => t.Name == docType);
+                        documentTypeCombo.SelectedItem = item ?? _settings.DocumentTypes.First();
                     }
                 }
                 else
@@ -192,16 +199,10 @@ namespace EZDUploader.UI.Forms
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
 
-            documentTypeCombo.Items.AddRange(new[]
-            {
-                "Pismo",
-                "Notatka",
-                "Wniosek",
-                "Decyzja",
-                "Opinia",
-                "Zaświadczenie",
-                "Inny"
-            });
+            var types = ConfigurationManager.LoadSettings().DocumentTypes;
+            documentTypeCombo.DisplayMember = "Name";
+            documentTypeCombo.ValueMember = "Id";
+            documentTypeCombo.DataSource = types;
 
             // Przyciski
             okButton = new Button
@@ -276,7 +277,7 @@ namespace EZDUploader.UI.Forms
                 if (!noBrakZnaku.Checked && signatureTextBox.Text != "(różne)")
                     file.NumerPisma = signatureTextBox.Text;
 
-                file.DocumentType = documentTypeCombo.SelectedItem?.ToString();
+                file.DocumentType = ((DocumentType)documentTypeCombo.SelectedItem)?.Name;
             }
         }
     }

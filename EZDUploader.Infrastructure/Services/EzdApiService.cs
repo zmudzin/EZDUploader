@@ -505,18 +505,10 @@ namespace EZDUploader.Infrastructure.Services
             return response != null ? MapToResponse(response) : throw new Exception("Nie udało się zarejestrować sprawy");
         }
 
-        private string DecryptPassword(string encryptedPassword)
+        private string DecryptPassword(string password)
         {
-            if (string.IsNullOrEmpty(encryptedPassword)) return encryptedPassword;
-            try
-            {
-                byte[] data = Convert.FromBase64String(encryptedPassword);
-                return Encoding.UTF8.GetString(data);
-            }
-            catch
-            {
-                return encryptedPassword; // W przypadku błędu zwracamy oryginalne hasło
-            }
+            // Usuwamy dekodowanie, ponieważ hasło jest już w plain text
+            return password;
         }
 
     }

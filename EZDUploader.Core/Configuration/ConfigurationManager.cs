@@ -16,13 +16,14 @@ namespace EZDUploader.Core.Configuration
         {
             try
             {
-                // Tworzymy kopię ustawień do zapisu
                 var settingsToSave = new ApiSettings
                 {
                     BaseUrl = settings.BaseUrl,
                     ApplicationToken = settings.ApplicationToken,
                     Login = settings.Login,
-                    Password = EncryptString(settings.Password),
+                    Password = settings.AuthType == AuthenticationType.LoginPassword ?
+                              EncryptString(settings.Password) :
+                              string.Empty,
                     AuthType = settings.AuthType
                 };
 
@@ -48,11 +49,17 @@ namespace EZDUploader.Core.Configuration
                 if (File.Exists(configPath))
                 {
                     var json = File.ReadAllText(configPath);
-                    var options = new JsonSerializerOptions
+                    var settings = JsonSerializer.Deserialize<ApiSettings>(json, new JsonSerializerOptions
                     {
                         PropertyNameCaseInsensitive = true
-                    };
-                    return JsonSerializer.Deserialize<ApiSettings>(json, options);
+                    });
+
+                    if (settings.AuthType == AuthenticationType.LoginPassword && !string.IsNullOrEmpty(settings.Password))
+                    {
+                        settings.Password = DecryptString(settings.Password);
+                    }
+
+                    return settings;
                 }
             }
             catch (Exception ex)
