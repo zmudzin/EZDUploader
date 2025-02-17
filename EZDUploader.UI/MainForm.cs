@@ -37,7 +37,6 @@ namespace EZDUploader.UI
             _fileUploadService = fileUploadService;
             _ezdService = ezdService;
             _fileValidator = fileValidator;
-            filesListView = new ListView();
             InitializeUI();        // Potem nasza inicjalizacja
             InitializeEvents();
 
@@ -176,6 +175,7 @@ namespace EZDUploader.UI
     new ColumnHeader { Text = "Rodzaj", Width = 150 }
 });
             filesListView.LabelEdit = true;
+            filesListView.AfterLabelEdit += FilesListView_AfterLabelEdit;
             filesListView.DoubleClick += FilesListView_DoubleClick;
             filesListView.MouseClick += FilesListView_MouseClick;
             InitializeContextMenu();
@@ -222,6 +222,27 @@ namespace EZDUploader.UI
                     item.Enabled = hasSelection;
                 }
             };
+        }
+
+        private void FilesListView_AfterLabelEdit(object sender, LabelEditEventArgs e)
+        {
+            if (e.Label == null) return; // Anulowano edycję
+
+            // Walidacja - nazwa musi mieć co najmniej 2 wyrazy
+            var words = e.Label.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length < 2)
+            {
+                e.CancelEdit = true;
+                MessageBox.Show("Tytuł musi składać się z co najmniej dwóch wyrazów",
+                    "Walidacja", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            var file = (UploadFile)filesListView.Items[e.Item].Tag;
+            file.FileName = e.Label;
+
+            // Odśwież listę aby pokazać zaktualizowane dane
+            RefreshFilesList();
         }
 
         private async void RemoveFiles_Click(object sender, EventArgs e)
@@ -688,36 +709,58 @@ namespace EZDUploader.UI
             }
         }
 
-        private void RefreshFilesList()
+        public void RefreshFilesList()
         {
-            filesListView.BeginUpdate();
-            filesListView.Items.Clear();
-
-            foreach (var file in _fileUploadService.Files)
+            if (InvokeRequired)
             {
-                var item = new ListViewItem(file.FileName);
-                item.SubItems.Add(FormatFileSize(file.FileSize));
-                item.SubItems.Add(file.BrakDaty ? "Brak daty" : file.AddedDate.ToString("yyyy-MM-dd"));
-                item.SubItems.Add(file.BrakZnaku ? "Brak znaku" : (file.NumerPisma ?? "-"));
-                item.SubItems.Add(file.DocumentType ?? "-");
-                item.Tag = file;
-
-                switch (file.Status)
-                {
-                    case UploadStatus.Completed:
-                        item.ForeColor = Color.Green;
-                        break;
-                    case UploadStatus.Failed:
-                        item.ForeColor = Color.Red;
-                        break;
-                    case UploadStatus.Uploading:
-                        item.ForeColor = Color.Blue;
-                        break;
-                }
-
-                filesListView.Items.Add(item);
+                Invoke(RefreshFilesList);
+                return;
             }
-            filesListView.EndUpdate();
+
+            filesListView.BeginUpdate();
+            try
+            {
+                filesListView.Items.Clear();
+
+                foreach (var file in _fileUploadService.Files)
+                {
+                    var item = new ListViewItem(file.FileName);
+                    item.SubItems.Add(FormatFileSize(file.FileSize));
+                    item.SubItems.Add(file.BrakDaty ? "Brak daty" : file.AddedDate.ToString("yyyy-MM-dd"));
+                    item.SubItems.Add(file.BrakZnaku ? "Brak znaku" : (file.NumerPisma ?? "-"));
+                    item.SubItems.Add(file.DocumentType ?? "-");
+                    item.Tag = file;
+
+                    // Ustawienie koloru w zależności od statusu
+                    switch (file.Status)
+                    {
+                        case UploadStatus.Completed:
+                            item.ForeColor = Color.Green;
+                            break;
+                        case UploadStatus.Failed:
+                            item.ForeColor = Color.Red;
+                            break;
+                        case UploadStatus.Uploading:
+                            item.ForeColor = Color.Blue;
+                            break;
+                    }
+
+                    filesListView.Items.Add(item);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"BŁĄD podczas odświeżania listy plików: {ex}");
+                MessageBox.Show($"Wystąpił błąd podczas odświeżania listy plików: {ex.Message}",
+                    "Błąd", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                if (!IsDisposed && filesListView != null && !filesListView.IsDisposed)
+                {
+                    filesListView.EndUpdate();
+                }
+            }
         }
 
         private string FormatFileSize(long bytes)

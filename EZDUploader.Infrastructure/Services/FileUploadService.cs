@@ -3,6 +3,7 @@ using EZDUploader.Core.Models;
 using EZDUploader.Core.Interfaces;
 using EZDUploader.Core.Models;
 using EZDUploader.Core.Validators;
+using System.Diagnostics;
 
 namespace EZDUploader.Infrastructure.Services
 {
@@ -22,21 +23,39 @@ namespace EZDUploader.Infrastructure.Services
 
         public async Task AddFiles(string[] filePaths)
         {
-            foreach (var path in filePaths)
-            {
-                if (_files.Any(f => f.FilePath == path))
-                    continue;
+            Debug.WriteLine($"### FileUploadService.AddFiles ###");
+            Debug.WriteLine($"Próba dodania {filePaths.Length} plików:");
 
-                var fileInfo = new FileInfo(path);
-                _files.Add(new UploadFile
+            // Najpierw sprawdźmy które pliki są nowe
+            var existingPaths = _files.Select(f => f.FilePath).ToHashSet();
+            var newFiles = filePaths.Where(path => !existingPaths.Contains(path)).ToList();
+
+            Debug.WriteLine($"Znaleziono {newFiles.Count} nowych plików do dodania");
+
+            foreach (var path in newFiles)
+            {
+                try
                 {
-                    FilePath = path,
-                    FileName = fileInfo.Name,
-                    FileSize = fileInfo.Length,
-                    AddedDate = DateTime.Now,
-                    Status = UploadStatus.Pending
-                });
+                    var fileInfo = new FileInfo(path);
+                    Debug.WriteLine($"Dodaję plik: {fileInfo.Name}, rozmiar: {fileInfo.Length}");
+
+                    _files.Add(new UploadFile
+                    {
+                        FilePath = path,
+                        FileName = fileInfo.Name,
+                        FileSize = fileInfo.Length,
+                        AddedDate = DateTime.Now,
+                        Status = UploadStatus.Pending
+                    });
+                    Debug.WriteLine($"Plik dodany pomyślnie: {path}");
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"BŁĄD podczas dodawania pliku {path}: {ex}");
+                }
             }
+
+            Debug.WriteLine($"Aktualna liczba plików w serwisie: {_files.Count}");
         }
 
         public Task RemoveFiles(IEnumerable<UploadFile> files)
