@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.12.35527.113 d17.12
+VisualStudioVersion = 17.12.35527.113
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EZDUploader.Core", "EZDUploader.Core\EZDUploader.Core.csproj", "{B749DBA2-1120-488D-ACA0-6EF574E2F1E9}"
 EndProject
@@ -10,6 +10,11 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EZDUploader.UI", "EZDUploader.UI\EZDUploader.UI.csproj", "{46409497-2A7A-4FF0-ADB7-0BF6FB00406A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EZDUploader.Shell", "EZDUploader.Shell\EZDUploader.Shell.csproj", "{B9E5B033-1286-4E4C-BF6D-B19D31D2A6AC}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Elementy rozwiązania", "Elementy rozwiązania", "{DB209D32-16F6-4D05-A918-4C807CC55CAD}"
+	ProjectSection(SolutionItems) = preProject
+		registry.reg = registry.reg
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
