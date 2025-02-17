@@ -13,16 +13,8 @@ namespace EZDUploader.Core.Configuration
         public string ApplicationToken { get; set; } = string.Empty;
         public string Login { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
-        public List<DocumentType> DocumentTypes { get; set; } = new()
-         {
-        new() { Id = 1, Name = "Pismo" },
-        new() { Id = 2, Name = "Notatka" },
-        new() { Id = 3, Name = "Wniosek" },
-        new() { Id = 4, Name = "Decyzja" },
-        new() { Id = 5, Name = "Opinia" },
-        new() { Id = 6, Name = "Zaświadczenie" },
-        new() { Id = 7, Name = "Inny" }
-    };
+        public List<DocumentType> DocumentTypes { get; set; } = new();
+
 public (string AuthParam, string AuthToken) GenerateAuthTokens()
         {
             if (string.IsNullOrEmpty(ApplicationToken))
@@ -50,6 +42,7 @@ public (string AuthParam, string AuthToken) GenerateAuthTokens()
             Login = other.Login;
             Password = other.Password;
             AuthType = other.AuthType;
+            DocumentTypes = other.DocumentTypes?.ToList() ?? new();
         }
     }
     public enum AuthenticationType

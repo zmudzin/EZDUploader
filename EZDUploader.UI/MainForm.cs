@@ -505,10 +505,9 @@ namespace EZDUploader.UI
                     break;
 
                 case 4: // Rodzaj dokumentu
-                    using (var dialog = new ComboBoxDialog("Wybierz rodzaj dokumentu", new[]
-                    {
-                "Pismo", "Notatka", "Wniosek", "Decyzja", "Opinia", "Zaświadczenie", "Inny"
-            }))
+                    var settings = ConfigurationManager.LoadSettings();
+                    using (var dialog = new ComboBoxDialog("Wybierz rodzaj dokumentu",
+                        settings.DocumentTypes.Select(dt => dt.Name)))
                     {
                         if (dialog.ShowDialog() == DialogResult.OK)
                         {
@@ -530,7 +529,7 @@ namespace EZDUploader.UI
             private ComboBox comboBox;
             public string SelectedValue => comboBox.SelectedItem?.ToString();
 
-            public ComboBoxDialog(string title, string[] items)
+            public ComboBoxDialog(string title, IEnumerable<string> items)
             {
                 Text = title;
                 Size = new Size(300, 150);
@@ -542,18 +541,8 @@ namespace EZDUploader.UI
                     DropDownStyle = ComboBoxStyle.DropDownList
                 };
 
-                // Dodaj elementy do ComboBox
-                comboBox.Items.AddRange(new[]
-                {
-            "Pismo",
-            "Notatka",
-            "Wniosek",
-            "Decyzja",
-            "Opinia",
-            "Zaświadczenie",
-            "Inny"
-        });
-
+                // Dodaj elementy do ComboBox z przekazanej listy
+                comboBox.Items.AddRange(items.ToArray());
                 comboBox.SelectedIndex = 0;
 
                 var btnOk = new Button

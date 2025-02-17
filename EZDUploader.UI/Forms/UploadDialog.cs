@@ -20,22 +20,37 @@ namespace EZDUploader.UI.Forms
         private Button _uploadButton;
         private Button _cancelButton;
         private ProgressBar _progressBar;
-        private CheckBox _noBrakDaty;
-        private CheckBox _noBrakZnaku;
         private Label _statusLabel;
 
         public UploadDialog(IEzdApiService ezdService,
-            IFileUploadService fileUploadService,
-            IFileValidator fileValidator,
-            IEnumerable<UploadFile> files)
+     IFileUploadService fileUploadService,
+     IFileValidator fileValidator,
+     IEnumerable<UploadFile> files)
         {
             _ezdService = ezdService;
             _fileUploadService = fileUploadService;
             _fileValidator = fileValidator;
             _files = files;
 
+            // Najpierw inicjalizujemy komponenty
             InitializeComponents();
-            LoadExistingFolders();
+
+            // Potem sprawdzamy konfigurację API
+            if (string.IsNullOrEmpty(_ezdService.Settings.BaseUrl))
+            {
+                MessageBox.Show(
+                    "Nie skonfigurowano połączenia z API EZD.\nSkonfiguruj połączenie w ustawieniach aplikacji.",
+                    "Brak konfiguracji",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+
+                DialogResult = DialogResult.Cancel;
+                // Nie wywołujemy Close() ani return - pozwalamy formularzowi zakończyć inicjalizację
+            }
+            else
+            {
+                LoadExistingFolders();
+            }
         }
 
         private static IEnumerable<UploadFile> ConvertToUploadFiles(string[] filePaths)
@@ -124,23 +139,7 @@ namespace EZDUploader.UI.Forms
                 Width = 75,
                 DialogResult = DialogResult.None
             };
-
-            _noBrakDaty = new CheckBox
-            {
-                Text = "Brak daty na piśmie",
-                Location = new Point(10, 150),
-                Checked = true,  // domyślnie zaznaczone
-                AutoSize = true
-            };
-
-            _noBrakZnaku = new CheckBox
-            {
-                Text = "Brak znaku pisma",
-                Location = new Point(200, 150),
-                Checked = true,  // domyślnie zaznaczone
-                AutoSize = true
-            };
-
+           
             _cancelButton = new Button
             {
                 Text = "Anuluj",
@@ -170,8 +169,6 @@ namespace EZDUploader.UI.Forms
                 nameInfoLabel,
                 _existingFolderRadio,
                 _existingFoldersCombo,
-                _noBrakDaty,
-                _noBrakZnaku,
                 _progressBar,
                 _statusLabel,
                 _uploadButton,
@@ -280,12 +277,6 @@ namespace EZDUploader.UI.Forms
                     _statusLabel.Text = $"Wysyłanie pliku {update.fileIndex} z {update.totalFiles} ({update.progress}%)";
                 });
 
-                // Przekazanie stanu checkboxów do plików przed wysłaniem
-                foreach (var file in _files)
-                {
-                    file.BrakDaty = _noBrakDaty.Checked;
-                    file.BrakZnaku = _noBrakZnaku.Checked;
-                }
 
                 await _fileUploadService.UploadFiles(folderId, _files, progress);
 

@@ -20,5 +20,11 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
   </ItemGroup>
+  
+  <ItemGroup>
+  <None Update="registry.reg">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </None>
+</ItemGroup>
 
 </Project>
