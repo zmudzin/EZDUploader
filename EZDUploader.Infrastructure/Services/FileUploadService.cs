@@ -12,6 +12,7 @@ namespace EZDUploader.Infrastructure.Services
         private readonly IEzdApiService _ezdService;
         private readonly IFileValidator _fileValidator;
         private readonly List<UploadFile> _files = new();
+        private int _currentSortOrder = 0;
 
         public FileUploadService(IEzdApiService ezdService, IFileValidator fileValidator)
         {
@@ -26,36 +27,54 @@ namespace EZDUploader.Infrastructure.Services
             Debug.WriteLine($"### FileUploadService.AddFiles ###");
             Debug.WriteLine($"Próba dodania {filePaths.Length} plików:");
 
-            // Najpierw sprawdźmy które pliki są nowe
-            var existingPaths = _files.Select(f => f.FilePath).ToHashSet();
-            var newFiles = filePaths.Where(path => !existingPaths.Contains(path)).ToList();
-
-            Debug.WriteLine($"Znaleziono {newFiles.Count} nowych plików do dodania");
-
-            foreach (var path in newFiles)
+            try
             {
-                try
+                Debug.WriteLine($"Ścieżki plików do dodania:");
+                foreach (var path in filePaths)
                 {
-                    var fileInfo = new FileInfo(path);
-                    Debug.WriteLine($"Dodaję plik: {fileInfo.Name}, rozmiar: {fileInfo.Length}");
+                    Debug.WriteLine($"- {path}");
+                }
 
-                    _files.Add(new UploadFile
+                // Sprawdzamy duplikaty
+                var existingPaths = _files.Select(f => f.FilePath).ToHashSet();
+                Debug.WriteLine($"Istniejące pliki: {existingPaths.Count}");
+
+                var newFiles = filePaths.Where(path => !existingPaths.Contains(path));
+                Debug.WriteLine($"Nowe pliki do dodania: {newFiles.Count()}");
+
+                foreach (var path in newFiles)
+                {
+                    try
                     {
-                        FilePath = path,
-                        FileName = fileInfo.Name,
-                        FileSize = fileInfo.Length,
-                        AddedDate = DateTime.Now,
-                        Status = UploadStatus.Pending
-                    });
-                    Debug.WriteLine($"Plik dodany pomyślnie: {path}");
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"BŁĄD podczas dodawania pliku {path}: {ex}");
-                }
-            }
+                        Debug.WriteLine($"Próba dodania pliku: {path}");
+                        var fileInfo = new FileInfo(path);
+                        Debug.WriteLine($"FileInfo utworzony dla: {fileInfo.Name}");
 
-            Debug.WriteLine($"Aktualna liczba plików w serwisie: {_files.Count}");
+                        _files.Add(new UploadFile
+                        {
+                            FilePath = path,
+                            FileName = fileInfo.Name,
+                            FileSize = fileInfo.Length,
+                            AddedDate = DateTime.Now,
+                            Status = UploadStatus.Pending,
+                            SortOrder = _currentSortOrder++
+                        });
+                        Debug.WriteLine($"Plik dodany pomyślnie: {path}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"BŁĄD podczas dodawania pojedynczego pliku {path}: {ex}");
+                        throw;
+                    }
+                }
+
+                Debug.WriteLine($"Aktualna liczba plików w serwisie: {_files.Count}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"BŁĄD GŁÓWNY podczas AddFiles: {ex}");
+                throw;
+            }
         }
 
         public Task RemoveFiles(IEnumerable<UploadFile> files)
@@ -133,6 +152,7 @@ namespace EZDUploader.Infrastructure.Services
         public void ClearFiles()
         {
             _files.Clear();
+            _currentSortOrder = 0;
         }
     }
 }

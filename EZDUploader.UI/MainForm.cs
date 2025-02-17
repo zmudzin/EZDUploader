@@ -30,6 +30,8 @@ namespace EZDUploader.UI
         private Label progressLabel;
         private Button uploadButton;
         private ContextMenuStrip contextMenu;
+        private int currentSortColumn = -1;
+        private bool ascending = true;
 
         public MainForm(IFileUploadService fileUploadService, IEzdApiService ezdService, IFileValidator fileValidator)
         {
@@ -138,6 +140,8 @@ namespace EZDUploader.UI
                 BackColor = SystemColors.Window  // Dodajemy kolor tła dla widoczności
             };
 
+            filesListView.ColumnClick += FilesListView_ColumnClick;
+
 
             // Podpięcie zdarzeń drag&drop
             filesListView.DragEnter += FilesListView_DragEnter;
@@ -179,6 +183,23 @@ namespace EZDUploader.UI
             filesListView.DoubleClick += FilesListView_DoubleClick;
             filesListView.MouseClick += FilesListView_MouseClick;
             InitializeContextMenu();
+        }
+
+        private void FilesListView_ColumnClick(object sender, ColumnClickEventArgs e)
+        {
+            // Jeśli kliknięto tę samą kolumnę, zmień kierunek sortowania
+            if (e.Column == currentSortColumn)
+            {
+                ascending = !ascending;
+            }
+            else
+            {
+                currentSortColumn = e.Column;
+                ascending = true;
+            }
+
+            // Sortuj listę
+            filesListView.ListViewItemSorter = new ListViewItemComparer(e.Column, ascending);
         }
         private void InitializeEvents()
         {
@@ -711,7 +732,8 @@ namespace EZDUploader.UI
             {
                 filesListView.Items.Clear();
 
-                foreach (var file in _fileUploadService.Files)
+                // Sortujemy po SortOrder przed dodaniem do listy
+                foreach (var file in _fileUploadService.Files.OrderBy(f => f.SortOrder))
                 {
                     var item = new ListViewItem(file.FileName);
                     item.SubItems.Add(FormatFileSize(file.FileSize));
@@ -720,7 +742,6 @@ namespace EZDUploader.UI
                     item.SubItems.Add(file.DocumentType ?? "-");
                     item.Tag = file;
 
-                    // Ustawienie koloru w zależności od statusu
                     switch (file.Status)
                     {
                         case UploadStatus.Completed:
@@ -965,5 +986,116 @@ namespace EZDUploader.UI
             }
         }
 
+    }
+    public class ListViewItemComparer : System.Collections.IComparer
+    {
+        private readonly int column;
+        private readonly bool ascending;
+
+        public ListViewItemComparer(int column, bool ascending)
+        {
+            this.column = column;
+            this.ascending = ascending;
+        }
+
+        public int Compare(object x, object y)
+        {
+            var itemX = (ListViewItem)x;
+            var itemY = (ListViewItem)y;
+
+            string valueX = itemX.SubItems[column].Text;
+            string valueY = itemY.SubItems[column].Text;
+
+            int result = 0; // Inicjalizacja zmiennej
+
+            // Kolumna 0 to "Tytuł" - specjalna obsługa nazw plików
+            if (column == 0)
+            {
+                // Wyodrębnij nazwę bez rozszerzenia
+                string fileNameX = Path.GetFileNameWithoutExtension(valueX);
+                string fileNameY = Path.GetFileNameWithoutExtension(valueY);
+
+                // Wyodrębnij bazową nazwę i numer
+                var partsX = SplitFileNameAndNumber(fileNameX);
+                var partsY = SplitFileNameAndNumber(fileNameY);
+
+                // Najpierw porównaj części tekstowe
+                result = string.Compare(partsX.baseName, partsY.baseName, StringComparison.OrdinalIgnoreCase);
+                if (result == 0)
+                {
+                    // Jeśli teksty są takie same, porównaj numery
+                    result = partsX.number.CompareTo(partsY.number);
+                }
+            }
+            // Kolumna 2 to "Data na piśmie"
+            else if (column == 2)
+            {
+                // Jeśli obie wartości to "Brak daty", traktuj je jako równe
+                if (valueX == "Brak daty" && valueY == "Brak daty")
+                    result = 0;
+                // "Brak daty" powinno być na końcu listy
+                else if (valueX == "Brak daty")
+                    result = 1;
+                else if (valueY == "Brak daty")
+                    result = -1;
+                // Próbuj parsować daty
+                else if (DateTime.TryParse(valueX, out DateTime dateX) &&
+                         DateTime.TryParse(valueY, out DateTime dateY))
+                    result = dateX.CompareTo(dateY);
+                else
+                    result = string.Compare(valueX, valueY, StringComparison.Ordinal);
+            }
+            // Kolumna 1 to "Rozmiar"
+            else if (column == 1)
+            {
+                var sizeX = ParseFileSize(valueX);
+                var sizeY = ParseFileSize(valueY);
+                result = sizeX.CompareTo(sizeY);
+            }
+            else
+            {
+                result = string.Compare(valueX, valueY, StringComparison.Ordinal);
+            }
+
+            return ascending ? result : -result;
+        }
+
+        private (string baseName, int number) SplitFileNameAndNumber(string fileName)
+        {
+            // Znajdź ostatnią grupę cyfr w nazwie
+            var match = System.Text.RegularExpressions.Regex.Match(fileName, @"^(.*?)(\d+)$");
+            if (match.Success)
+            {
+                string baseName = match.Groups[1].Value;
+                if (int.TryParse(match.Groups[2].Value, out int number))
+                {
+                    return (baseName, number);
+                }
+            }
+            return (fileName, 0);
+        }
+
+        private long ParseFileSize(string size)
+        {
+            try
+            {
+                var parts = size.Split(' ');
+                var value = double.Parse(parts[0], System.Globalization.CultureInfo.InvariantCulture);
+                var unit = parts[1].ToUpper();
+
+                return unit switch
+                {
+                    "B" => (long)value,
+                    "KB" => (long)(value * 1024),
+                    "MB" => (long)(value * 1024 * 1024),
+                    "GB" => (long)(value * 1024 * 1024 * 1024),
+                    _ => 0
+                };
+            }
+            catch
+            {
+                return 0;
+            }
+        }
     }
 }

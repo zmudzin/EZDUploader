@@ -19,6 +19,8 @@ namespace EZDUploader.Core.Models
         public string NumerPisma { get; set; }
         public bool BrakDaty { get; set; } = true;  // domyślnie true
         public bool BrakZnaku { get; set; } = true; // domyślnie true
+        public int SortOrder { get; set; }
+
     }
 
     public enum UploadStatus
