@@ -9,7 +9,7 @@ Aplikacja EZD Uploader to narzędzie wspomagające elektroniczne zarządzanie do
 ### Zarządzanie Dokumentami
 - Dodawanie plików z dysku lub przez przeciąganie
 - Edycja metadanych dokumentów
-- Dodawanie tytułów, dat i znaków pism
+- Dodawanie tytułów, rodzajów, dat i znaków pism
 - Klasyfikacja rodzajów dokumentów
 
 ### Integracja z API EZD
@@ -48,6 +48,7 @@ Przed pierwszym użyciem skonfiguruj:
 - Opinia
 - Zaświadczenie
 - Inny
+(łatwa możliwość modyfikacji i dodania innych rodzajów)
 
 ## Instrukcja Użycia
 
