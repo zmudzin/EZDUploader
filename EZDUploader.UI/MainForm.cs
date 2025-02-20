@@ -137,11 +137,12 @@ namespace EZDUploader.UI
                 AllowDrop = true,
                 FullRowSelect = true,
                 GridLines = true,
+                MultiSelect = true,
                 BackColor = SystemColors.Window  // Dodajemy kolor tła dla widoczności
             };
 
             filesListView.ColumnClick += FilesListView_ColumnClick;
-
+            filesListView.KeyDown += FilesListView_KeyDown;
 
             // Podpięcie zdarzeń drag&drop
             filesListView.DragEnter += FilesListView_DragEnter;
@@ -176,13 +177,26 @@ namespace EZDUploader.UI
     new ColumnHeader { Text = "Rozmiar", Width = 100 },
     new ColumnHeader { Text = "Data na piśmie", Width = 150 },
     new ColumnHeader { Text = "Znak pisma", Width = 150 },
-    new ColumnHeader { Text = "Rodzaj", Width = 150 }
+    new ColumnHeader { Text = "Rodzaj", Width = 150 },
+    new ColumnHeader { Text = "Koszulka", Width = 150 }
 });
             filesListView.LabelEdit = true;
             filesListView.AfterLabelEdit += FilesListView_AfterLabelEdit;
             filesListView.DoubleClick += FilesListView_DoubleClick;
             filesListView.MouseClick += FilesListView_MouseClick;
             InitializeContextMenu();
+        }
+
+        private void FilesListView_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Control && e.KeyCode == Keys.A)
+            {
+                foreach (ListViewItem item in filesListView.Items)
+                {
+                    item.Selected = true;
+                }
+                e.SuppressKeyPress = true; // zapobiega sygnałowi dźwiękowemu
+            }
         }
 
         private void FilesListView_ColumnClick(object sender, ColumnClickEventArgs e)
@@ -541,6 +555,21 @@ namespace EZDUploader.UI
                         }
                     }
                     break;
+
+                case 5: // Koszulka 
+                    using (var dialog = new KoszulkaSelectionDialog(_ezdService))
+                    {
+                        if (dialog.ShowDialog() == DialogResult.OK)
+                        {
+                            foreach (ListViewItem item in filesListView.SelectedItems)
+                            {
+                                var selectedFile = (UploadFile)item.Tag;
+                                selectedFile.KoszulkaId = dialog.SelectedKoszulkaId;
+                            }
+                            RefreshFilesList();
+                        }
+                    }
+                    break;
             }
         }
 
@@ -574,6 +603,34 @@ namespace EZDUploader.UI
                 };
 
                 Controls.AddRange(new Control[] { comboBox, btnOk });
+            }
+        }
+
+        private async void SelectKoszulka_Click(object sender, EventArgs e)
+        {
+            if (filesListView.SelectedItems.Count == 0) return;
+
+            var file = (UploadFile)filesListView.SelectedItems[0].Tag;
+
+            try
+            {
+                using var dialog = new KoszulkaSelectionDialog(_ezdService);
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    int? koszulkaId = dialog.SelectedKoszulkaId;
+
+                    foreach (ListViewItem item in filesListView.SelectedItems)
+                    {
+                        var selectedFile = (UploadFile)item.Tag;
+                        selectedFile.KoszulkaId = koszulkaId;
+                    }
+                    RefreshFilesList();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Błąd podczas wyboru koszulki: {ex.Message}",
+                    "Błąd", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -740,6 +797,7 @@ namespace EZDUploader.UI
                     item.SubItems.Add(file.BrakDaty ? "Brak daty" : file.AddedDate.ToString("yyyy-MM-dd"));
                     item.SubItems.Add(file.BrakZnaku ? "Brak znaku" : (file.NumerPisma ?? "-"));
                     item.SubItems.Add(file.DocumentType ?? "-");
+                    item.SubItems.Add(file.KoszulkaId?.ToString() ?? "-");
                     item.Tag = file;
 
                     switch (file.Status)
@@ -1027,6 +1085,17 @@ namespace EZDUploader.UI
                     result = partsX.number.CompareTo(partsY.number);
                 }
             }
+            else if (column == 5) // Koszulka column
+            {
+                if (int.TryParse(valueX, out int koszulkaX) && int.TryParse(valueY, out int koszulkaY))
+                {
+                    result = koszulkaX.CompareTo(koszulkaY);
+                }
+                else
+                {
+                    result = string.Compare(valueX, valueY, StringComparison.Ordinal);
+                }
+            }
             // Kolumna 2 to "Data na piśmie"
             else if (column == 2)
             {
@@ -1045,6 +1114,7 @@ namespace EZDUploader.UI
                 else
                     result = string.Compare(valueX, valueY, StringComparison.Ordinal);
             }
+
             // Kolumna 1 to "Rozmiar"
             else if (column == 1)
             {

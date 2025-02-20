@@ -77,11 +77,33 @@ namespace EZDUploader.UI.Forms
                 Padding = new Padding(10)
             };
 
+            // Sprawdzamy wybrane koszulki
+            var groupedFiles = _files
+                .Where(f => f.KoszulkaId.HasValue)
+                .GroupBy(f => f.KoszulkaId.Value)
+                .ToList();
+
+            // Informacja o wybranych koszulkach
+            if (groupedFiles.Any())
+            {
+                var selectedFoldersInfo = new Label
+                {
+                    Text = groupedFiles.Count == 1
+                        ? "Wybrano koszulkę dla dokumentów"
+                        : $"Wybrano {groupedFiles.Count} różne koszulki dla dokumentów",
+                    Location = new Point(10, 5),
+                    AutoSize = true,
+                    ForeColor = Color.DarkBlue,
+                    Font = new Font(Font, FontStyle.Bold)
+                };
+                panel.Controls.Add(selectedFoldersInfo);
+            }
+
             _newFolderRadio = new RadioButton
             {
                 Text = "Utwórz nową koszulkę",
                 Location = new Point(10, 20),
-                Checked = true,
+                Checked = !groupedFiles.Any(),
                 AutoSize = true
             };
 
@@ -91,9 +113,21 @@ namespace EZDUploader.UI.Forms
                 Width = 320
             };
 
+            if (groupedFiles.Any())
+            {
+                _newFolderNameBox.Text = groupedFiles.Count == 1
+                    ? "Dokumenty zostaną wysłane do wybranej koszulki"
+                    : $"Dokumenty zostaną wysłane do {groupedFiles.Count} koszulek";
+                _newFolderNameBox.ReadOnly = true;
+                _newFolderNameBox.BackColor = SystemColors.Control;
+                _newFolderNameBox.ForeColor = Color.DarkBlue;
+            }
+
             var nameInfoLabel = new Label
             {
-                Text = "Nazwa koszulki musi składać się z co najmniej dwóch wyrazów",
+                Text = groupedFiles.Any()
+                    ? ""
+                    : "Nazwa koszulki musi składać się z co najmniej dwóch wyrazów",
                 Location = new Point(30, 75),
                 AutoSize = true,
                 ForeColor = Color.Gray,
@@ -134,12 +168,14 @@ namespace EZDUploader.UI.Forms
 
             _uploadButton = new Button
             {
-                Text = "Wyślij",
+                Text = groupedFiles.Any()
+                    ? (groupedFiles.Count == 1 ? "Wyślij do wybranej koszulki" : "Wyślij do wybranych koszulek")
+                    : "Wyślij",
                 Location = new Point(210, 250),
                 Width = 75,
                 DialogResult = DialogResult.None
             };
-           
+
             _cancelButton = new Button
             {
                 Text = "Anuluj",
@@ -151,29 +187,43 @@ namespace EZDUploader.UI.Forms
             // Events
             _newFolderRadio.CheckedChanged += (s, e) =>
             {
-                _newFolderNameBox.Enabled = _newFolderRadio.Checked;
-                _existingFoldersCombo.Enabled = !_newFolderRadio.Checked;
+                if (!groupedFiles.Any())
+                {
+                    _newFolderNameBox.Enabled = _newFolderRadio.Checked;
+                    _existingFoldersCombo.Enabled = !_newFolderRadio.Checked;
+                }
             };
 
             _existingFolderRadio.CheckedChanged += (s, e) =>
             {
-                _newFolderNameBox.Enabled = !_existingFolderRadio.Checked;
-                _existingFoldersCombo.Enabled = _existingFolderRadio.Checked;
+                if (!groupedFiles.Any())
+                {
+                    _newFolderNameBox.Enabled = !_existingFolderRadio.Checked;
+                    _existingFoldersCombo.Enabled = _existingFolderRadio.Checked;
+                }
             };
 
             _uploadButton.Click += uploadButton_Click;
 
+            // Jeśli są już wybrane koszulki, wyłączamy możliwość wyboru
+            if (groupedFiles.Any())
+            {
+                _newFolderRadio.Enabled = false;
+                _existingFolderRadio.Enabled = false;
+                _existingFoldersCombo.Enabled = false;
+            }
+
             panel.Controls.AddRange(new Control[] {
-                _newFolderRadio,
-                _newFolderNameBox,
-                nameInfoLabel,
-                _existingFolderRadio,
-                _existingFoldersCombo,
-                _progressBar,
-                _statusLabel,
-                _uploadButton,
-                _cancelButton
-            });
+        _newFolderRadio,
+        _newFolderNameBox,
+        nameInfoLabel,
+        _existingFolderRadio,
+        _existingFoldersCombo,
+        _progressBar,
+        _statusLabel,
+        _uploadButton,
+        _cancelButton
+    });
 
             Controls.Add(panel);
         }
@@ -221,29 +271,90 @@ namespace EZDUploader.UI.Forms
                     return;
                 }
             }
-            // Walidacja - czy wybrano sposób dodawania
-            if (_newFolderRadio.Checked && string.IsNullOrWhiteSpace(_newFolderNameBox.Text))
-            {
-                MessageBox.Show("Wprowadź nazwę nowej koszulki",
-                    "Walidacja", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
 
-            if (_existingFolderRadio.Checked && _existingFoldersCombo.SelectedItem == null)
+            // Sprawdź czy wszystkie pliki mają przypisane koszulki
+            var filesWithoutKoszulka = _files.Where(f => !f.KoszulkaId.HasValue).ToList();
+            if (filesWithoutKoszulka.Any())
             {
-                MessageBox.Show("Wybierz koszulkę z listy",
-                    "Walidacja", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
+                // Sprawdź czy dla plików z koszulkami mamy różne koszulki
+                var distinctKoszulki = _files
+                    .Where(f => f.KoszulkaId.HasValue)
+                    .Select(f => f.KoszulkaId.Value)
+                    .Distinct()
+                    .ToList();
 
-            // Walidacja nazwy nowej koszulki
-            if (_newFolderRadio.Checked)
-            {
-                var words = _newFolderNameBox.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (words.Length < 2)
+                if (distinctKoszulki.Count > 1)
                 {
-                    MessageBox.Show("Nazwa koszulki musi składać się z co najmniej dwóch wyrazów",
-                        "Walidacja", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(
+                        $"Pliki na liście mają wybrane różne koszulki. Dokument '{filesWithoutKoszulka.First().FileName}' " +
+                        "nie ma wybranej koszulki. Wybierz koszulkę dla tego dokumentu przed wysłaniem.",
+                        "Wybierz koszulkę",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning
+                    );
+                    return;
+                }
+
+                // Walidacja nazwy nowej koszulki
+                if (_newFolderRadio.Checked)
+                {
+                    var words = _newFolderNameBox.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (words.Length < 2)
+                    {
+                        MessageBox.Show("Nazwa koszulki musi składać się z co najmniej dwóch wyrazów",
+                            "Walidacja", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                }
+
+                var result = MessageBox.Show(
+                    $"Znaleziono {filesWithoutKoszulka.Count} plików bez wybranej koszulki.\n" +
+                    "Czy chcesz użyć aktualnie wybranej koszulki dla tych plików?",
+                    "Brak koszulek",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question
+                );
+
+                if (result == DialogResult.Yes)
+                {
+                    try
+                    {
+                        int folderId;
+                        if (_newFolderRadio.Checked)
+                        {
+                            var newFolder = await _ezdService.UtworzKoszulke(
+                                _newFolderNameBox.Text,
+                                _ezdService.CurrentUserId.Value
+                            );
+                            folderId = newFolder.ID;
+                        }
+                        else
+                        {
+                            var selectedFolder = (FolderItem)_existingFoldersCombo.SelectedItem;
+                            folderId = selectedFolder.Id;
+                        }
+
+                        // Przypisz wybraną koszulkę do plików bez koszulki
+                        foreach (var file in filesWithoutKoszulka)
+                        {
+                            file.KoszulkaId = folderId;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Błąd podczas tworzenia/wyboru koszulki: {ex.Message}",
+                            "Błąd", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+                }
+                else
+                {
+                    MessageBox.Show(
+                        "Wybierz koszulki dla wszystkich plików przed wysłaniem.",
+                        "Informacja",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information
+                    );
                     return;
                 }
             }
@@ -254,21 +365,6 @@ namespace EZDUploader.UI.Forms
                 _progressBar.Visible = true;
                 _statusLabel.Text = "Przygotowanie do wysyłania...";
 
-                int folderId;
-                if (_newFolderRadio.Checked)
-                {
-                    var newFolder = await _ezdService.UtworzKoszulke(
-                        _newFolderNameBox.Text,
-                        _ezdService.CurrentUserId.Value
-                    );
-                    folderId = newFolder.ID;
-                }
-                else
-                {
-                    var selectedFolder = (FolderItem)_existingFoldersCombo.SelectedItem;
-                    folderId = selectedFolder.Id;
-                }
-
                 var progress = new Progress<(int fileIndex, int totalFiles, int progress)>(update =>
                 {
                     _progressBar.Maximum = update.totalFiles * 100;
@@ -277,9 +373,7 @@ namespace EZDUploader.UI.Forms
                     _statusLabel.Text = $"Wysyłanie pliku {update.fileIndex} z {update.totalFiles} ({update.progress}%)";
                 });
 
-
-                await _fileUploadService.UploadFiles(folderId, _files, progress);
-
+                await _fileUploadService.UploadFiles(_files, progress);
                 DialogResult = DialogResult.OK;
             }
             catch (ArgumentException ex) when (ex.Message.Contains("nazwa koszulki"))
@@ -298,7 +392,6 @@ namespace EZDUploader.UI.Forms
                 _progressBar.Visible = false;
             }
         }
-
         private class FolderItem
         {
             public int Id { get; }

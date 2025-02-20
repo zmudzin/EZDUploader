@@ -86,17 +86,9 @@ namespace EZDUploader.Infrastructure.Services
             return Task.CompletedTask;
         }
 
-        public async Task UploadFiles(int idKoszulki, IEnumerable<UploadFile> files, IProgress<(int fileIndex, int totalFiles, int progress)> progress = null)
+        public async Task UploadFiles(IEnumerable<UploadFile> files, IProgress<(int fileIndex, int totalFiles, int progress)> progress = null)
         {
             var filesToUpload = files.ToList();
-            foreach (var file in filesToUpload)
-            {
-                var validationError = _fileValidator.GetFileValidationError(file.FileName);
-                if (validationError != null)
-                {
-                    throw new ArgumentException($"Błąd walidacji pliku {file.FileName}: {validationError}");
-                }
-            }
             var errors = new List<(UploadFile File, Exception Error)>();
 
             for (int i = 0; i < filesToUpload.Count; i++)
@@ -104,6 +96,11 @@ namespace EZDUploader.Infrastructure.Services
                 var file = filesToUpload[i];
                 try
                 {
+                    if (!file.KoszulkaId.HasValue)
+                    {
+                        throw new ArgumentException($"Nie wybrano koszulki dla pliku {file.FileName}");
+                    }
+
                     file.Status = UploadStatus.Uploading;
                     progress?.Report((i + 1, filesToUpload.Count, 0));
 
@@ -119,15 +116,26 @@ namespace EZDUploader.Infrastructure.Services
 
                     var dokument = await _ezdService.RejestrujDokument(
                         file.FileName,
-                        idKoszulki,
+                        file.KoszulkaId.Value,
                         idZalacznika,
-                        _ezdService.CurrentUserId.Value
+                        _ezdService.CurrentUserId.Value,
+                        file.BrakDaty,
+                        file.BrakZnaku
                     );
 
-                    if (!string.IsNullOrEmpty(file.DocumentType) || file.AddedDate != default)
+                    if (!string.IsNullOrEmpty(file.DocumentType) || (!file.BrakDaty && file.AddedDate != default))
                     {
+                        // Modyfikujemy dokument używając bezpośrednio jego właściwości
                         dokument.Rodzaj = file.DocumentType;
-                        dokument.DataDokumentu = file.AddedDate.ToString("yyyy-MM-dd");
+                        if (!file.BrakDaty)
+                        {
+                            dokument.DataDokumentu = file.AddedDate.ToString("yyyy-MM-dd");
+                        }
+                        if (!file.BrakZnaku)
+                        {
+                            dokument.Sygnatura = file.NumerPisma;
+                        }
+
                         await _ezdService.AktualizujMetadaneDokumentu(dokument);
                     }
 
