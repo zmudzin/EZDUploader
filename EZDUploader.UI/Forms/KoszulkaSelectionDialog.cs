@@ -63,7 +63,6 @@ namespace EZDUploader.UI.Forms
             btnOK = new Button
             {
                 Text = "OK",
-                DialogResult = DialogResult.OK,
                 Location = new Point(210, 170)
             };
             btnOK.Click += BtnOK_Click;
@@ -131,7 +130,6 @@ namespace EZDUploader.UI.Forms
                     if (string.IsNullOrWhiteSpace(txtNewName.Text))
                     {
                         MessageBox.Show("Wprowadź nazwę koszulki");
-                        DialogResult = DialogResult.None;
                         return;
                     }
 
@@ -139,7 +137,6 @@ namespace EZDUploader.UI.Forms
                     if (words.Length < 2)
                     {
                         MessageBox.Show("Nazwa koszulki musi składać się z co najmniej dwóch wyrazów");
-                        DialogResult = DialogResult.None;
                         return;
                     }
 
@@ -148,24 +145,24 @@ namespace EZDUploader.UI.Forms
                         _ezdService.CurrentUserId.Value
                     );
                     SelectedKoszulkaId = newKoszulka.ID;
+                    DialogResult = DialogResult.OK; // Ustawiamy DialogResult dopiero po utworzeniu koszulki
                 }
                 else
                 {
                     if (existingKoszulkiCombo.SelectedItem == null)
                     {
                         MessageBox.Show("Wybierz koszulkę");
-                        DialogResult = DialogResult.None;
                         return;
                     }
 
                     var selected = (KoszulkaItem)existingKoszulkiCombo.SelectedItem;
                     SelectedKoszulkaId = selected.Id;
+                    DialogResult = DialogResult.OK; // Ustawiamy DialogResult po wybraniu koszulki
                 }
             }
             catch (Exception ex)
             {
                 MessageBox.Show("Błąd: " + ex.Message);
-                DialogResult = DialogResult.None;
             }
         }
 

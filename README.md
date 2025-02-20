@@ -34,13 +34,15 @@ Aplikacja EZD Uploader to narzędzie wspomagające elektroniczne zarządzanie do
 
 ## Konfiguracja
 
-### Ustawienia Połączenia
+### Ustawienia aplikacji
 Przed pierwszym użyciem skonfiguruj:
-- Adres serwera API
+- Adres serwera API (bez / na końcu adresu : http://ezd-api.pl)
 - Metodę autoryzacji (token/login)
 - Dane uwierzytelniające
+- uruchomić ponownie aplikację
 - Opjonalnie dodać registry.reg celem dodania do menu kontekstowego Wysyłki do EZD
 - Po wstępnej konfiguracji można edytować documentTypes.json
+
 
 ## Obsługiwane Rodzaje Dokumentów
 - Pismo
