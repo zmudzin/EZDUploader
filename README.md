@@ -39,6 +39,8 @@ Przed pierwszym użyciem skonfiguruj:
 - Adres serwera API
 - Metodę autoryzacji (token/login)
 - Dane uwierzytelniające
+- Opjonalnie dodać registry.reg celem dodania do menu kontekstowego Wysyłki do EZD
+- Po wstępnej konfiguracji można edytować documentTypes.json
 
 ## Obsługiwane Rodzaje Dokumentów
 - Pismo
@@ -48,7 +50,7 @@ Przed pierwszym użyciem skonfiguruj:
 - Opinia
 - Zaświadczenie
 - Inny
-(łatwa możliwość modyfikacji i dodania innych rodzajów)
+(łatwa możliwość modyfikacji i dodania innych rodzajów w documentTypes.json)
 
 ## Instrukcja Użycia
 
