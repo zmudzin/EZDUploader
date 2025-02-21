@@ -74,7 +74,7 @@ namespace EZDUploader.UI
 
         private void InitializeUI()
         {
-            this.Size = new Size(1000, 768);
+            this.Size = new Size(1064, 768);
             this.Text = "EZD Uploader";
 
 
