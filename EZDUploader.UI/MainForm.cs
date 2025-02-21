@@ -74,7 +74,7 @@ namespace EZDUploader.UI
 
         private void InitializeUI()
         {
-            this.Size = new Size(1024, 768);
+            this.Size = new Size(1000, 768);
             this.Text = "EZD Uploader";
 
 
@@ -565,6 +565,7 @@ namespace EZDUploader.UI
                             {
                                 var selectedFile = (UploadFile)item.Tag;
                                 selectedFile.KoszulkaId = dialog.SelectedKoszulkaId;
+                                selectedFile.NowaKoszulkaNazwa = dialog.NowaNazwaKoszulki;
                             }
                             RefreshFilesList();
                         }
@@ -797,7 +798,9 @@ namespace EZDUploader.UI
                     item.SubItems.Add(file.BrakDaty ? "Brak daty" : file.AddedDate.ToString("yyyy-MM-dd"));
                     item.SubItems.Add(file.BrakZnaku ? "Brak znaku" : (file.NumerPisma ?? "-"));
                     item.SubItems.Add(file.DocumentType ?? "-");
-                    item.SubItems.Add(file.KoszulkaId?.ToString() ?? "-");
+                    item.SubItems.Add(!string.IsNullOrEmpty(file.NowaKoszulkaNazwa) ?
+                        "Nowa: " + file.NowaKoszulkaNazwa :
+                        (file.KoszulkaId.HasValue ? file.KoszulkaId.ToString() : "-"));
                     item.Tag = file;
 
                     switch (file.Status)

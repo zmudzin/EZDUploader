@@ -14,6 +14,9 @@ namespace EZDUploader.UI.Forms
         private Button btnOK;
         private Button btnCancel;
 
+        public string NowaNazwaKoszulki { get; private set; }
+
+
         public int? SelectedKoszulkaId { get; private set; }
 
         public KoszulkaSelectionDialog(IEzdApiService ezdService)
@@ -140,12 +143,10 @@ namespace EZDUploader.UI.Forms
                         return;
                     }
 
-                    var newKoszulka = await _ezdService.UtworzKoszulke(
-                        txtNewName.Text,
-                        _ezdService.CurrentUserId.Value
-                    );
-                    SelectedKoszulkaId = newKoszulka.ID;
-                    DialogResult = DialogResult.OK; // Ustawiamy DialogResult dopiero po utworzeniu koszulki
+                    // Zamiast tworzyć koszulkę, zapisujemy tylko nazwę
+                    NowaNazwaKoszulki = txtNewName.Text;
+                    SelectedKoszulkaId = null;
+                    DialogResult = DialogResult.OK;
                 }
                 else
                 {
@@ -157,7 +158,8 @@ namespace EZDUploader.UI.Forms
 
                     var selected = (KoszulkaItem)existingKoszulkiCombo.SelectedItem;
                     SelectedKoszulkaId = selected.Id;
-                    DialogResult = DialogResult.OK; // Ustawiamy DialogResult po wybraniu koszulki
+                    NowaNazwaKoszulki = null;
+                    DialogResult = DialogResult.OK;
                 }
             }
             catch (Exception ex)

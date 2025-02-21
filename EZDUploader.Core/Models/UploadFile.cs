@@ -21,6 +21,8 @@ namespace EZDUploader.Core.Models
         public bool BrakZnaku { get; set; } = true; // domyślnie true
         public int SortOrder { get; set; }
         public int? KoszulkaId { get; set; }
+        public string NowaKoszulkaNazwa { get; set; }
+        public string NazwaKoszulki { get; set; }
     }
 
     public enum UploadStatus

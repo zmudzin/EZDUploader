@@ -261,6 +261,7 @@ namespace EZDUploader.UI.Forms
 
         private async void uploadButton_Click(object sender, EventArgs e)
         {
+            // Walidacja plików
             foreach (var file in _files)
             {
                 var validationError = _fileValidator.GetFileValidationError(file.FileName);
@@ -272,29 +273,13 @@ namespace EZDUploader.UI.Forms
                 }
             }
 
-            // Sprawdź czy wszystkie pliki mają przypisane koszulki
-            var filesWithoutKoszulka = _files.Where(f => !f.KoszulkaId.HasValue).ToList();
+            // Sprawdzamy czy wszystkie pliki mają przypisaną koszulkę lub nową nazwę koszulki
+            var filesWithoutKoszulka = _files
+                .Where(f => !f.KoszulkaId.HasValue && string.IsNullOrEmpty(f.NowaKoszulkaNazwa))
+                .ToList();
+
             if (filesWithoutKoszulka.Any())
             {
-                // Sprawdź czy dla plików z koszulkami mamy różne koszulki
-                var distinctKoszulki = _files
-                    .Where(f => f.KoszulkaId.HasValue)
-                    .Select(f => f.KoszulkaId.Value)
-                    .Distinct()
-                    .ToList();
-
-                if (distinctKoszulki.Count > 1)
-                {
-                    MessageBox.Show(
-                        $"Pliki na liście mają wybrane różne koszulki. Dokument '{filesWithoutKoszulka.First().FileName}' " +
-                        "nie ma wybranej koszulki. Wybierz koszulkę dla tego dokumentu przed wysłaniem.",
-                        "Wybierz koszulkę",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning
-                    );
-                    return;
-                }
-
                 // Walidacja nazwy nowej koszulki
                 if (_newFolderRadio.Checked)
                 {
@@ -317,34 +302,21 @@ namespace EZDUploader.UI.Forms
 
                 if (result == DialogResult.Yes)
                 {
-                    try
+                    if (_newFolderRadio.Checked)
                     {
-                        int folderId;
-                        if (_newFolderRadio.Checked)
-                        {
-                            var newFolder = await _ezdService.UtworzKoszulke(
-                                _newFolderNameBox.Text,
-                                _ezdService.CurrentUserId.Value
-                            );
-                            folderId = newFolder.ID;
-                        }
-                        else
-                        {
-                            var selectedFolder = (FolderItem)_existingFoldersCombo.SelectedItem;
-                            folderId = selectedFolder.Id;
-                        }
-
-                        // Przypisz wybraną koszulkę do plików bez koszulki
+                        var newName = _newFolderNameBox.Text;
                         foreach (var file in filesWithoutKoszulka)
                         {
-                            file.KoszulkaId = folderId;
+                            file.NowaKoszulkaNazwa = newName;
                         }
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        MessageBox.Show($"Błąd podczas tworzenia/wyboru koszulki: {ex.Message}",
-                            "Błąd", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        return;
+                        var selectedFolder = (FolderItem)_existingFoldersCombo.SelectedItem;
+                        foreach (var file in filesWithoutKoszulka)
+                        {
+                            file.KoszulkaId = selectedFolder.Id;
+                        }
                     }
                 }
                 else
@@ -375,10 +347,6 @@ namespace EZDUploader.UI.Forms
 
                 await _fileUploadService.UploadFiles(_files, progress);
                 DialogResult = DialogResult.OK;
-            }
-            catch (ArgumentException ex) when (ex.Message.Contains("nazwa koszulki"))
-            {
-                MessageBox.Show(ex.Message, "Błąd walidacji", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             catch (Exception ex)
             {

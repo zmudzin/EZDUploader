@@ -91,69 +91,116 @@ namespace EZDUploader.Infrastructure.Services
             var filesToUpload = files.ToList();
             var errors = new List<(UploadFile File, Exception Error)>();
 
-            for (int i = 0; i < filesToUpload.Count; i++)
+            try
             {
-                var file = filesToUpload[i];
-                try
+                // Najpierw tworzymy nowe koszulki
+                var filesGrouped = filesToUpload
+                    .Where(f => !string.IsNullOrEmpty(f.NowaKoszulkaNazwa))
+                    .GroupBy(f => f.NowaKoszulkaNazwa);
+
+                foreach (var group in filesGrouped)
                 {
-                    if (!file.KoszulkaId.HasValue)
+                    try
                     {
-                        throw new ArgumentException($"Nie wybrano koszulki dla pliku {file.FileName}");
+                        Debug.WriteLine($"Tworzenie nowej koszulki: {group.Key}");
+                        var newKoszulka = await _ezdService.UtworzKoszulke(
+                            group.Key,
+                            _ezdService.CurrentUserId.Value
+                        );
+
+                        foreach (var file in group)
+                        {
+                            file.KoszulkaId = newKoszulka.ID;
+                            file.NowaKoszulkaNazwa = null;
+                            Debug.WriteLine($"Przypisano koszulkę {newKoszulka.ID} do pliku {file.FileName}");
+                        }
                     }
-
-                    file.Status = UploadStatus.Uploading;
-                    progress?.Report((i + 1, filesToUpload.Count, 0));
-
-                    byte[] content = await File.ReadAllBytesAsync(file.FilePath);
-                    progress?.Report((i + 1, filesToUpload.Count, 30));
-
-                    var idZalacznika = await _ezdService.DodajZalacznik(
-                        content,
-                        file.FileName,
-                        _ezdService.CurrentUserId.Value
-                    );
-                    progress?.Report((i + 1, filesToUpload.Count, 60));
-
-                    var dokument = await _ezdService.RejestrujDokument(
-                        file.FileName,
-                        file.KoszulkaId.Value,
-                        idZalacznika,
-                        _ezdService.CurrentUserId.Value,
-                        file.BrakDaty,
-                        file.BrakZnaku
-                    );
-
-                    if (!string.IsNullOrEmpty(file.DocumentType) || (!file.BrakDaty && file.AddedDate != default))
+                    catch (Exception ex)
                     {
-                        // Modyfikujemy dokument używając bezpośrednio jego właściwości
-                        dokument.Rodzaj = file.DocumentType;
-                        if (!file.BrakDaty)
+                        Debug.WriteLine($"Błąd podczas tworzenia koszulki {group.Key}: {ex}");
+                        foreach (var file in group)
                         {
-                            dokument.DataDokumentu = file.AddedDate.ToString("yyyy-MM-dd");
+                            file.Status = UploadStatus.Failed;
+                            file.ErrorMessage = $"Błąd podczas tworzenia koszulki: {ex.Message}";
+                            errors.Add((file, ex));
                         }
-                        if (!file.BrakZnaku)
-                        {
-                            dokument.Sygnatura = file.NumerPisma;
-                        }
-
-                        await _ezdService.AktualizujMetadaneDokumentu(dokument);
                     }
-
-                    file.Status = UploadStatus.Completed;
-                    progress?.Report((i + 1, filesToUpload.Count, 100));
                 }
-                catch (Exception ex)
+
+                // Teraz wysyłamy pliki
+                for (int i = 0; i < filesToUpload.Count; i++)
                 {
-                    file.Status = UploadStatus.Failed;
-                    file.ErrorMessage = ex.Message;
-                    errors.Add((file, ex));
+                    var file = filesToUpload[i];
+                    if (file.Status == UploadStatus.Failed) continue; // Pomijamy pliki z błędami
+
+                    try
+                    {
+                        if (!file.KoszulkaId.HasValue)
+                        {
+                            throw new ArgumentException($"Nie wybrano koszulki dla pliku {file.FileName}");
+                        }
+
+                        Debug.WriteLine($"Rozpoczynam upload pliku {file.FileName} do koszulki {file.KoszulkaId}");
+                        file.Status = UploadStatus.Uploading;
+                        progress?.Report((i + 1, filesToUpload.Count, 0));
+
+                        byte[] content = await File.ReadAllBytesAsync(file.FilePath);
+                        progress?.Report((i + 1, filesToUpload.Count, 30));
+
+                        var idZalacznika = await _ezdService.DodajZalacznik(
+                            content,
+                            file.FileName,
+                            _ezdService.CurrentUserId.Value
+                        );
+                        progress?.Report((i + 1, filesToUpload.Count, 60));
+
+                        var dokument = await _ezdService.RejestrujDokument(
+                            file.FileName,
+                            file.KoszulkaId.Value,
+                            idZalacznika,
+                            _ezdService.CurrentUserId.Value,
+                            file.BrakDaty,
+                            file.BrakZnaku
+                        );
+
+                        if (!string.IsNullOrEmpty(file.DocumentType) || (!file.BrakDaty && file.AddedDate != default))
+                        {
+                            dokument.Rodzaj = file.DocumentType;
+                            if (!file.BrakDaty)
+                            {
+                                dokument.DataDokumentu = file.AddedDate.ToString("yyyy-MM-dd");
+                            }
+                            if (!file.BrakZnaku)
+                            {
+                                dokument.Sygnatura = file.NumerPisma;
+                            }
+
+                            await _ezdService.AktualizujMetadaneDokumentu(dokument);
+                        }
+
+                        file.Status = UploadStatus.Completed;
+                        Debug.WriteLine($"Zakończono upload pliku {file.FileName}");
+                        progress?.Report((i + 1, filesToUpload.Count, 100));
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Błąd podczas uploadu pliku {file.FileName}: {ex}");
+                        file.Status = UploadStatus.Failed;
+                        file.ErrorMessage = ex.Message;
+                        errors.Add((file, ex));
+                    }
+                }
+
+                if (errors.Any())
+                {
+                    var errorMessage = string.Join("\n", errors.Select(e => $"- {e.File.FileName}: {e.Error.Message}"));
+                    throw new AggregateException($"Błąd podczas wysyłania plików:\n{errorMessage}", errors.Select(e => e.Error));
                 }
             }
-
-            if (errors.Any())
+            catch (Exception ex)
             {
-                var errorMessage = string.Join("\n", errors.Select(e => $"- {e.File.FileName}: {e.Error.Message}"));
-                throw new AggregateException($"Błąd podczas wysyłania plików:\n{errorMessage}", errors.Select(e => e.Error));
+                Debug.WriteLine($"Błąd główny podczas uploadu: {ex}");
+                throw;
             }
         }
 
