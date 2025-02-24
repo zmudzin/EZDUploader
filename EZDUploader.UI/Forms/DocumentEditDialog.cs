@@ -77,10 +77,21 @@ namespace EZDUploader.UI.Forms
                     if (!string.IsNullOrEmpty(docType))
                     {
                         var item = _settings.DocumentTypes.FirstOrDefault(t => t.Name == docType);
-                        documentTypeCombo.SelectedItem = item ?? _settings.DocumentTypes.First();
+                        if (item != null)
+                        {
+                            documentTypeCombo.SelectedItem = item;
+                        }
+                        else if (documentTypeCombo.Items.Count > 0)
+                        {
+                            documentTypeCombo.SelectedIndex = 0;
+                        }
+                    }
+                    else if (documentTypeCombo.Items.Count > 0)
+                    {
+                        documentTypeCombo.SelectedIndex = 0;
                     }
                 }
-                else
+                else if (documentTypeCombo.Items.Count > 0)
                 {
                     documentTypeCombo.SelectedIndex = 0;
                 }
@@ -200,6 +211,17 @@ namespace EZDUploader.UI.Forms
             };
 
             var types = ConfigurationManager.LoadSettings().DocumentTypes;
+            if (types != null && types.Any())  // upewniamy się że lista typów nie jest pusta
+            {
+                documentTypeCombo.DisplayMember = "Name";
+                documentTypeCombo.ValueMember = "Id";
+                documentTypeCombo.DataSource = types;
+            }
+            else
+            {
+                MessageBox.Show("Brak zdefiniowanych typów dokumentów w konfiguracji.",
+                    "Ostrzeżenie", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
             documentTypeCombo.DisplayMember = "Name";
             documentTypeCombo.ValueMember = "Id";
             documentTypeCombo.DataSource = types;

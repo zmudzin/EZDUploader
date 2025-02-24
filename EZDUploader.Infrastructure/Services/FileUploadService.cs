@@ -4,6 +4,7 @@ using EZDUploader.Core.Interfaces;
 using EZDUploader.Core.Models;
 using EZDUploader.Core.Validators;
 using System.Diagnostics;
+using System.ComponentModel.DataAnnotations;
 
 namespace EZDUploader.Infrastructure.Services
 {
@@ -13,6 +14,8 @@ namespace EZDUploader.Infrastructure.Services
         private readonly IFileValidator _fileValidator;
         private readonly List<UploadFile> _files = new();
         private int _currentSortOrder = 0;
+        private bool _cancelRequested;
+
 
         public FileUploadService(IEzdApiService ezdService, IFileValidator fileValidator)
         {
@@ -88,113 +91,200 @@ namespace EZDUploader.Infrastructure.Services
 
         public async Task UploadFiles(IEnumerable<UploadFile> files, IProgress<(int fileIndex, int totalFiles, int progress)> progress = null)
         {
-            var filesToUpload = files.ToList();
-            var errors = new List<(UploadFile File, Exception Error)>();
+            _cancelRequested = false;
+            const int ROZMIAR_PACZKI = 20;
+            var plikiDoWyslania = files.ToList();
+            Debug.WriteLine($"Rozpoczęcie wysyłki {plikiDoWyslania.Count} plików");
+            Debug.WriteLine($"Status plików przed wysyłką:");
+            foreach (var plik in plikiDoWyslania)
+            {
+                Debug.WriteLine($"- {plik.FileName}: {plik.Status}");
+            }
+            var bledy = new List<(UploadFile Plik, Exception Blad)>();
+
+            // Pełna walidacja przed rozpoczęciem wysyłki
+            foreach (var plik in plikiDoWyslania)
+            {
+                if (string.IsNullOrWhiteSpace(plik.DocumentType))
+                {
+                    bledy.Add((plik, new ValidationException("Wymagane jest wybranie rodzaju dokumentu")));
+                }
+                if (!plik.KoszulkaId.HasValue && string.IsNullOrEmpty(plik.NowaKoszulkaNazwa))
+                {
+                    bledy.Add((plik, new ValidationException("Wymagane jest wybranie koszulki lub podanie nazwy nowej koszulki")));
+                }
+                if (!_fileValidator.ValidateFileName(plik.FileName))
+                {
+                    bledy.Add((plik, new ValidationException(_fileValidator.GetFileValidationError(plik.FileName))));
+                }
+            }
+
+            // Jeśli są błędy, przerwij wysyłkę
+            if (bledy.Any())
+            {
+                var errorsByFile = bledy
+                    .GroupBy(b => b.Plik.FileName)
+                    .ToDictionary(
+                        g => g.Key,
+                        g => g.Select(b => b.Blad.Message).ToList()
+                    );
+
+                var errorMessage = string.Join("\n", errorsByFile.Select(kvp =>
+                    $"- {kvp.Key}:\n  " + string.Join("\n  ", kvp.Value)));
+
+                foreach (var error in bledy)
+                {
+                    error.Plik.Status = UploadStatus.Failed;
+                    error.Plik.ErrorMessage = string.Join("; ",
+                        errorsByFile[error.Plik.FileName]);
+                }
+
+                throw new AggregateException($"Błędy walidacji:\n{errorMessage}",
+                    bledy.Select(e => e.Blad));
+            }
 
             try
             {
-                // Najpierw tworzymy nowe koszulki
-                var filesGrouped = filesToUpload
+                // KROK 1: Walidacja przed wysyłką
+                var plikiZBledami = plikiDoWyslania
+                    .Where(p => string.IsNullOrWhiteSpace(p.DocumentType))
+                    .ToList();
+
+                if (plikiZBledami.Any())
+                {
+                    foreach (var plik in plikiZBledami)
+                    {
+                        plik.Status = UploadStatus.Failed;
+                        plik.ErrorMessage = "Wymagane jest wybranie rodzaju dokumentu";
+                        bledy.Add((plik, new ValidationException("Brak wybranego rodzaju dokumentu")));
+                    }
+                    var errorMessage = string.Join("\n", plikiZBledami.Select(p => $"- {p.FileName}: Wymagane jest wybranie rodzaju dokumentu"));
+                    throw new AggregateException($"Błędy walidacji:\n{errorMessage}",
+                        bledy.Select(e => e.Blad));
+                }
+
+                // KROK 2: Tworzenie koszulek (bez zmian)
+                var grupowanePliki = plikiDoWyslania
                     .Where(f => !string.IsNullOrEmpty(f.NowaKoszulkaNazwa))
                     .GroupBy(f => f.NowaKoszulkaNazwa);
 
-                foreach (var group in filesGrouped)
+                foreach (var grupa in grupowanePliki)
                 {
                     try
                     {
-                        Debug.WriteLine($"Tworzenie nowej koszulki: {group.Key}");
-                        var newKoszulka = await _ezdService.UtworzKoszulke(
-                            group.Key,
+                        Debug.WriteLine($"Tworzenie nowej koszulki: {grupa.Key}");
+                        var nowaKoszulka = await _ezdService.UtworzKoszulke(
+                            grupa.Key,
                             _ezdService.CurrentUserId.Value
                         );
 
-                        foreach (var file in group)
+                        foreach (var plik in grupa)
                         {
-                            file.KoszulkaId = newKoszulka.ID;
-                            file.NowaKoszulkaNazwa = null;
-                            Debug.WriteLine($"Przypisano koszulkę {newKoszulka.ID} do pliku {file.FileName}");
+                            plik.KoszulkaId = nowaKoszulka.ID;
+                            plik.NowaKoszulkaNazwa = null;
                         }
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"Błąd podczas tworzenia koszulki {group.Key}: {ex}");
-                        foreach (var file in group)
+                        foreach (var plik in grupa)
                         {
-                            file.Status = UploadStatus.Failed;
-                            file.ErrorMessage = $"Błąd podczas tworzenia koszulki: {ex.Message}";
-                            errors.Add((file, ex));
+                            plik.Status = UploadStatus.Failed;
+                            plik.ErrorMessage = $"Błąd podczas tworzenia koszulki: {ex.Message}";
+                            bledy.Add((plik, ex));
                         }
                     }
                 }
 
-                // Teraz wysyłamy pliki
-                for (int i = 0; i < filesToUpload.Count; i++)
+                // KROK 3: Wysyłanie plików w paczkach (istniejąca logika)
+                for (int i = 0; i < plikiDoWyslania.Count; i += ROZMIAR_PACZKI)
                 {
-                    var file = filesToUpload[i];
-                    if (file.Status == UploadStatus.Failed) continue; // Pomijamy pliki z błędami
-
-                    try
+                    if (_cancelRequested)
                     {
-                        if (!file.KoszulkaId.HasValue)
+                        Debug.WriteLine("Anulowanie wysyłki - nie będą wysyłane kolejne paczki");
+                        break;
+                    }
+
+                    var paczka = plikiDoWyslania
+                        .Skip(i)
+                        .Take(ROZMIAR_PACZKI)
+                        .Where(f => f.Status != UploadStatus.Failed)
+                        .ToList();
+
+                    foreach (var plik in paczka)
+                    {
+                        try
                         {
-                            throw new ArgumentException($"Nie wybrano koszulki dla pliku {file.FileName}");
-                        }
-
-                        Debug.WriteLine($"Rozpoczynam upload pliku {file.FileName} do koszulki {file.KoszulkaId}");
-                        file.Status = UploadStatus.Uploading;
-                        progress?.Report((i + 1, filesToUpload.Count, 0));
-
-                        byte[] content = await File.ReadAllBytesAsync(file.FilePath);
-                        progress?.Report((i + 1, filesToUpload.Count, 30));
-
-                        var idZalacznika = await _ezdService.DodajZalacznik(
-                            content,
-                            file.FileName,
-                            _ezdService.CurrentUserId.Value
-                        );
-                        progress?.Report((i + 1, filesToUpload.Count, 60));
-
-                        var dokument = await _ezdService.RejestrujDokument(
-                            file.FileName,
-                            file.KoszulkaId.Value,
-                            idZalacznika,
-                            _ezdService.CurrentUserId.Value,
-                            file.BrakDaty,
-                            file.BrakZnaku
-                        );
-
-                        if (!string.IsNullOrEmpty(file.DocumentType) || (!file.BrakDaty && file.AddedDate != default))
-                        {
-                            dokument.Rodzaj = file.DocumentType;
-                            if (!file.BrakDaty)
+                            if (_cancelRequested && plik.Status != UploadStatus.Uploading)
                             {
-                                dokument.DataDokumentu = file.AddedDate.ToString("yyyy-MM-dd");
-                            }
-                            if (!file.BrakZnaku)
-                            {
-                                dokument.Sygnatura = file.NumerPisma;
+                                Debug.WriteLine($"Pomijanie pliku {plik.FileName} z powodu anulowania");
+                                continue;
                             }
 
-                            await _ezdService.AktualizujMetadaneDokumentu(dokument);
-                        }
+                            if (!plik.KoszulkaId.HasValue)
+                            {
+                                throw new ArgumentException($"Nie wybrano koszulki dla pliku {plik.FileName}");
+                            }
 
-                        file.Status = UploadStatus.Completed;
-                        Debug.WriteLine($"Zakończono upload pliku {file.FileName}");
-                        progress?.Report((i + 1, filesToUpload.Count, 100));
+                            plik.Status = UploadStatus.Uploading;
+                            progress?.Report((i + paczka.IndexOf(plik) + 1, plikiDoWyslania.Count, 0));
+
+                            byte[] zawartosc = await File.ReadAllBytesAsync(plik.FilePath);
+                            progress?.Report((i + paczka.IndexOf(plik) + 1, plikiDoWyslania.Count, 30));
+
+                            var idZalacznika = await _ezdService.DodajZalacznik(
+                                zawartosc,
+                                plik.FileName,
+                                _ezdService.CurrentUserId.Value
+                            );
+                            progress?.Report((i + paczka.IndexOf(plik) + 1, plikiDoWyslania.Count, 60));
+
+                            var dokument = await _ezdService.RejestrujDokument(
+                                plik.FileName,
+                                plik.KoszulkaId.Value,
+                                idZalacznika,
+                                _ezdService.CurrentUserId.Value,
+                                plik.BrakDaty,
+                                plik.BrakZnaku
+                            );
+
+                            if (!string.IsNullOrEmpty(plik.DocumentType) || (!plik.BrakDaty && plik.AddedDate != default))
+                            {
+                                dokument.Rodzaj = plik.DocumentType;
+                                if (!plik.BrakDaty)
+                                {
+                                    dokument.DataDokumentu = plik.AddedDate.ToString("yyyy-MM-dd");
+                                }
+                                if (!plik.BrakZnaku)
+                                {
+                                    dokument.Sygnatura = plik.NumerPisma;
+                                }
+
+                                await _ezdService.AktualizujMetadaneDokumentu(dokument);
+                            }
+
+                            plik.Status = UploadStatus.Completed;
+                            progress?.Report((i + paczka.IndexOf(plik) + 1, plikiDoWyslania.Count, 100));
+                        }
+                        catch (Exception ex)
+                        {
+                            plik.Status = UploadStatus.Failed;
+                            plik.ErrorMessage = ex.Message;
+                            bledy.Add((plik, ex));
+                        }
                     }
-                    catch (Exception ex)
+
+                    if (i + ROZMIAR_PACZKI < plikiDoWyslania.Count)
                     {
-                        Debug.WriteLine($"Błąd podczas uploadu pliku {file.FileName}: {ex}");
-                        file.Status = UploadStatus.Failed;
-                        file.ErrorMessage = ex.Message;
-                        errors.Add((file, ex));
+                        await Task.Delay(TimeSpan.FromSeconds(2));
                     }
+
+                    await Task.Delay(100);
                 }
 
-                if (errors.Any())
+                if (bledy.Any())
                 {
-                    var errorMessage = string.Join("\n", errors.Select(e => $"- {e.File.FileName}: {e.Error.Message}"));
-                    throw new AggregateException($"Błąd podczas wysyłania plików:\n{errorMessage}", errors.Select(e => e.Error));
+                    var errorMessage = string.Join("\n", bledy.Select(e => $"- {e.Plik.FileName}: {e.Blad.Message}"));
+                    throw new AggregateException($"Błędy podczas wysyłania plików:\n{errorMessage}", bledy.Select(e => e.Blad));
                 }
             }
             catch (Exception ex)
@@ -202,6 +292,12 @@ namespace EZDUploader.Infrastructure.Services
                 Debug.WriteLine($"Błąd główny podczas uploadu: {ex}");
                 throw;
             }
+        }
+
+        public void CancelUpload()
+        {
+            _cancelRequested = true;
+            Debug.WriteLine("Zgłoszono żądanie anulowania uploadu");
         }
 
         public void ClearFiles()

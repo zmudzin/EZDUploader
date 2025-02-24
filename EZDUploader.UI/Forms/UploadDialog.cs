@@ -261,6 +261,15 @@ namespace EZDUploader.UI.Forms
 
         private async void uploadButton_Click(object sender, EventArgs e)
         {
+            foreach (var file in _files)
+            {
+                if (file.Status == UploadStatus.Failed)
+                {
+                    file.Status = UploadStatus.Pending;
+                    file.ErrorMessage = null;
+                }
+            }
+
             // Walidacja plików
             foreach (var file in _files)
             {
@@ -337,6 +346,14 @@ namespace EZDUploader.UI.Forms
                 _progressBar.Visible = true;
                 _statusLabel.Text = "Przygotowanie do wysyłania...";
 
+                // Modyfikujemy zachowanie przycisku anulowania
+                _cancelButton.Click += (s, ev) =>
+                {
+                    _fileUploadService.CancelUpload();
+                    _statusLabel.Text = "Kończenie aktualnego pliku...";
+                    _cancelButton.Enabled = false;
+                };
+
                 var progress = new Progress<(int fileIndex, int totalFiles, int progress)>(update =>
                 {
                     _progressBar.Maximum = update.totalFiles * 100;
@@ -360,6 +377,18 @@ namespace EZDUploader.UI.Forms
                 _progressBar.Visible = false;
             }
         }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            base.OnFormClosing(e);
+
+            // Anuluj wysyłkę tylko jeśli użytkownik zamknął okno przed zakończeniem
+            if (DialogResult != DialogResult.OK)
+            {
+                _fileUploadService.CancelUpload();
+            }
+        }
+
         private class FolderItem
         {
             public int Id { get; }

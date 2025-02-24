@@ -13,7 +13,7 @@ Aplikacja EZD Uploader to narzędzie wspomagające elektroniczne zarządzanie do
 - Klasyfikacja rodzajów dokumentów
 
 ### Integracja z API EZD
-- Autoryzacja przez token lub login/hasło
+- Autoryzacja przez token (niesprawdzone) lub login/hasło
 - Przesyłanie plików do wybranej koszulki/sprawy
 - Walidacja dokumentów przed wysłaniem
 
@@ -40,8 +40,8 @@ Przed pierwszym użyciem skonfiguruj:
 - Metodę autoryzacji (token/login)
 - Dane uwierzytelniające
 - uruchomić ponownie aplikację
-- Opjonalnie dodać registry.reg celem dodania do menu kontekstowego Wysyłki do EZD
-- Po wstępnej konfiguracji można edytować documentTypes.json
+- Opjonalnie dodać registry.reg celem dodania do menu kontekstowego Wysyłki do EZD (domyślny katalog dla aplikacji to C:\EZDUploader)
+- Po zakończeniu wstępnej konfiguracji można edytować documentTypes.json
 
 
 ## Obsługiwane Rodzaje Dokumentów
@@ -63,7 +63,7 @@ Przed pierwszym użyciem skonfiguruj:
 
 ## Bezpieczeństwo
 
-- Walidacja plików przed wysłaniem
+- Walidacja plików przed wysłaniem (Walidacja nazwy oraz rodzaju dokumentu)
 - Szyfrowane połączenie z API
 - Obsługa różnych metod uwierzytelniania
 

@@ -8,6 +8,7 @@ namespace EZDUploader.Core.Interfaces
         Task AddFiles(string[] filePaths);
         Task RemoveFiles(IEnumerable<UploadFile> files);
         Task UploadFiles(IEnumerable<UploadFile> files, IProgress<(int fileIndex, int totalFiles, int progress)> progress = null);
+        void CancelUpload();
         void ClearFiles();
     }
 }

@@ -147,6 +147,8 @@ namespace EZDUploader.UI
             // Podpięcie zdarzeń drag&drop
             filesListView.DragEnter += FilesListView_DragEnter;
             filesListView.DragDrop += FilesListView_DragDrop;
+            filesListView.SelectedIndexChanged += (s, e) => UpdateSelectedFilesInfo();
+
 
             // StatusStrip musi być na samym końcu
             statusStrip = new StatusStrip();
@@ -173,6 +175,7 @@ namespace EZDUploader.UI
             filesListView.Columns.Clear();
             filesListView.Columns.AddRange(new[]
             {
+    new ColumnHeader { Text = "LP", Width = 50 },
     new ColumnHeader { Text = "Tytuł", Width = 300 },
     new ColumnHeader { Text = "Rozmiar", Width = 100 },
     new ColumnHeader { Text = "Data na piśmie", Width = 150 },
@@ -430,7 +433,40 @@ namespace EZDUploader.UI
 
             using var dialog = new ComboBoxDialog("Wybierz rodzaj dokumentu", new[]
             {
-        "Pismo", "Notatka", "Wniosek", "Decyzja", "Opinia", "Zaświadczenie", "Inny"
+        "Pismo",
+        "Faktura",
+        "Wniosek",
+        "Skarga",
+        "Nota księgowa",
+        "Odwołanie",
+        "Decyzja",
+        "Zawiadomienie",
+        "Opinia",
+        "Umowa",
+        "Postanowienie",
+        "Zażalenie",
+        "Sprawozdanie",
+        "Rachunek",
+        "Protokół",
+        "Zaświadczenie",
+        "Notatka służbowa",
+        "Wezwanie",
+        "Upoważnienie",
+        "Pełnomocnictwo",
+        "Akt notarialny",
+        "Zamówienie",
+        "Deklaracja",
+        "Informacja",
+        "Powiadomienie",
+        "Oferta",
+        "Zgłoszenie",
+        "Petycja",
+        "Formularz",
+        "Zapytanie",
+        "Oświadczenie",
+        "Uchwała",
+        "Zgoda",
+        "Zarządzenie"
     });
 
             if (dialog.ShowDialog() == DialogResult.OK)
@@ -487,8 +523,8 @@ namespace EZDUploader.UI
 
             switch (clickedColumn)
             {
-                case 0: // Tytuł
-                case 1: // Rozmiar
+                case 1: // Tytuł
+                case 2: // Rozmiar
                     if (!string.IsNullOrEmpty(file.FilePath))
                     {
                         try
@@ -508,7 +544,7 @@ namespace EZDUploader.UI
                     }
                     break;
 
-                case 2: // Data na piśmie
+                case 3: // Data na piśmie
                     using (var dialog = new DateOptionsDialog("Zmiana daty", file.AddedDate, file.BrakDaty))
                     {
                         if (dialog.ShowDialog() == DialogResult.OK)
@@ -524,7 +560,7 @@ namespace EZDUploader.UI
                     }
                     break;
 
-                case 3: // Znak pisma
+                case 4: // Znak pisma
                     using (var dialog = new SignatureOptionsDialog("Znak pisma", file.NumerPisma))
                     {
                         if (dialog.ShowDialog() == DialogResult.OK)
@@ -539,7 +575,7 @@ namespace EZDUploader.UI
                     }
                     break;
 
-                case 4: // Rodzaj dokumentu
+                case 5: // Rodzaj dokumentu
                     var settings = ConfigurationManager.LoadSettings();
                     using (var dialog = new ComboBoxDialog("Wybierz rodzaj dokumentu",
                         settings.DocumentTypes.Select(dt => dt.Name)))
@@ -556,7 +592,7 @@ namespace EZDUploader.UI
                     }
                     break;
 
-                case 5: // Koszulka 
+                case 6: // Koszulka 
                     using (var dialog = new KoszulkaSelectionDialog(_ezdService))
                     {
                         if (dialog.ShowDialog() == DialogResult.OK)
@@ -784,16 +820,19 @@ namespace EZDUploader.UI
                 Invoke(RefreshFilesList);
                 return;
             }
-
             filesListView.BeginUpdate();
             try
             {
                 filesListView.Items.Clear();
 
                 // Sortujemy po SortOrder przed dodaniem do listy
-                foreach (var file in _fileUploadService.Files.OrderBy(f => f.SortOrder))
+                var sortedFiles = _fileUploadService.Files.OrderBy(f => f.SortOrder).ToList();
+
+                for (int i = 0; i < sortedFiles.Count; i++)
                 {
-                    var item = new ListViewItem(file.FileName);
+                    var file = sortedFiles[i];
+                    var item = new ListViewItem((i + 1).ToString());  // LP
+                    item.SubItems.Add(file.FileName);
                     item.SubItems.Add(FormatFileSize(file.FileSize));
                     item.SubItems.Add(file.BrakDaty ? "Brak daty" : file.AddedDate.ToString("yyyy-MM-dd"));
                     item.SubItems.Add(file.BrakZnaku ? "Brak znaku" : (file.NumerPisma ?? "-"));
@@ -818,6 +857,9 @@ namespace EZDUploader.UI
 
                     filesListView.Items.Add(item);
                 }
+
+                // Aktualizacja informacji o zaznaczonych plikach
+                UpdateSelectedFilesInfo();
             }
             catch (Exception ex)
             {
@@ -832,6 +874,19 @@ namespace EZDUploader.UI
                     filesListView.EndUpdate();
                 }
             }
+        }
+
+        private void UpdateSelectedFilesInfo()
+        {
+            var selectedCount = filesListView.SelectedItems.Count;
+            var totalCount = filesListView.Items.Count;
+
+            // Aktualizacja statusu
+            var apiStatus = _ezdService.IsAuthenticated ? "Połączono" : "Nie zalogowano";
+            var apiStatusColor = _ezdService.IsAuthenticated ? Color.Green : Color.Red;
+
+            userStatusLabel.Text = $"{apiStatus} | Wybrano: {selectedCount} z {totalCount} plików";
+            userStatusLabel.ForeColor = apiStatusColor;
         }
 
         private string FormatFileSize(long bytes)
@@ -1067,10 +1122,18 @@ namespace EZDUploader.UI
             string valueX = itemX.SubItems[column].Text;
             string valueY = itemY.SubItems[column].Text;
 
-            int result = 0; // Inicjalizacja zmiennej
+            int result = 0;
 
-            // Kolumna 0 to "Tytuł" - specjalna obsługa nazw plików
-            if (column == 0)
+            if (column == 0) // Kolumna LP
+            {
+                // Sortowanie numeryczne dla kolumny LP
+                if (int.TryParse(valueX, out int numX) && int.TryParse(valueY, out int numY))
+                {
+                    result = numX.CompareTo(numY);
+                }
+            }
+            // Przesunięte indeksy dla pozostałych kolumn
+            else if (column == 1) // Tytuł (była 0)
             {
                 // Wyodrębnij nazwę bez rozszerzenia
                 string fileNameX = Path.GetFileNameWithoutExtension(valueX);
@@ -1088,7 +1151,7 @@ namespace EZDUploader.UI
                     result = partsX.number.CompareTo(partsY.number);
                 }
             }
-            else if (column == 5) // Koszulka column
+            else if (column == 6) // Koszulka (była 5)
             {
                 if (int.TryParse(valueX, out int koszulkaX) && int.TryParse(valueY, out int koszulkaY))
                 {
@@ -1099,27 +1162,21 @@ namespace EZDUploader.UI
                     result = string.Compare(valueX, valueY, StringComparison.Ordinal);
                 }
             }
-            // Kolumna 2 to "Data na piśmie"
-            else if (column == 2)
+            else if (column == 3) // Data na piśmie (była 2)
             {
-                // Jeśli obie wartości to "Brak daty", traktuj je jako równe
                 if (valueX == "Brak daty" && valueY == "Brak daty")
                     result = 0;
-                // "Brak daty" powinno być na końcu listy
                 else if (valueX == "Brak daty")
                     result = 1;
                 else if (valueY == "Brak daty")
                     result = -1;
-                // Próbuj parsować daty
                 else if (DateTime.TryParse(valueX, out DateTime dateX) &&
                          DateTime.TryParse(valueY, out DateTime dateY))
                     result = dateX.CompareTo(dateY);
                 else
                     result = string.Compare(valueX, valueY, StringComparison.Ordinal);
             }
-
-            // Kolumna 1 to "Rozmiar"
-            else if (column == 1)
+            else if (column == 2) // Rozmiar (była 1)
             {
                 var sizeX = ParseFileSize(valueX);
                 var sizeY = ParseFileSize(valueY);
