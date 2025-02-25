@@ -11,6 +11,9 @@ Aplikacja EZD Uploader to narzędzie wspomagające elektroniczne zarządzanie do
 - Edycja metadanych dokumentów
 - Dodawanie tytułów, rodzajów, dat i znaków pism
 - Klasyfikacja rodzajów dokumentów
+- Możliwość edycji masowej metadanych
+- Sortowanie plików
+- Otwieranie dodanych plików do listy w domyślnej aplikacji
 
 ### Integracja z API EZD
 - Autoryzacja przez token (niesprawdzone) lub login/hasło
@@ -41,7 +44,7 @@ Przed pierwszym użyciem skonfiguruj:
 - Dane uwierzytelniające
 - uruchomić ponownie aplikację
 - Opjonalnie dodać registry.reg celem dodania do menu kontekstowego Wysyłki do EZD (domyślny katalog dla aplikacji to C:\EZDUploader, maksymalna ilość plików którą można w ten sposób dodac to 100)
-- Po zakończeniu wstępnej konfiguracji można edytować documentTypes.json
+- Po zakończeniu wstępnej konfiguracji można edytować documentTypes.json, można dodać CSV z rodzajami dokumentów
 
 
 ## Obsługiwane Rodzaje Dokumentów
