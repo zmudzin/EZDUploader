@@ -52,7 +52,11 @@ Przed pierwszym użyciem skonfiguruj:
 - Opinia
 - Zaświadczenie
 - Inny
-(łatwa możliwość modyfikacji i dodania innych rodzajów w documentTypes.json)
+(łatwa możliwość modyfikacji i dodania innych rodzajów w documentTypes.json, ewentualnie dodać csv z wynikiem
+SELECT       *
+FROM         SlownikiAplikacji
+WHERE        (IdSlownika = '8')
+)
 
 ## Instrukcja Użycia
 
