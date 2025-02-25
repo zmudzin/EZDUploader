@@ -1,10 +1,7 @@
-using Microsoft.Extensions.DependencyInjection;
+ï»¿using Microsoft.Extensions.DependencyInjection;
 using EZDUploader.Core.Configuration;
 using EZDUploader.Core.Interfaces;
 using EZDUploader.Infrastructure.Services;
-using System.Windows.Forms;
-using EZDUploader.UI.Forms;
-using EZDUploader.Core.Models;
 using EZDUploader.Core.Validators;
 using System.IO.Pipes;
 using System.Diagnostics;
@@ -16,160 +13,179 @@ static class Program
     [STAThread]
     static void Main(string[] args)
     {
-        Debug.WriteLine($"### START APLIKACJI ###");
-        Debug.WriteLine($"Argumenty: {string.Join(", ", args ?? new string[0])}");
+        // Unikalna nazwa mutex dla caÅ‚ej aplikacji
+        const string MutexName = "Global\\EZDUploaderSingleInstanceMutex";
 
-        var validArgs = args?.Where(arg => !string.IsNullOrEmpty(arg)).ToArray() ?? Array.Empty<string>();
-        Debug.WriteLine($"Poprawne argumenty po filtracji: {string.Join(", ", validArgs)}");
-
-        var mutexName = "Global\\EZDUploaderInstance";
-        using (var mutex = new Mutex(false, mutexName, out bool createdNew))
+        // Flaga okreÅ›lajÄ…ca, czy jesteÅ›my pierwszÄ… instancjÄ…
+        bool createdNew;
+        using (var mutex = new Mutex(true, MutexName, out createdNew))
         {
-            Debug.WriteLine($"Mutex createdNew: {createdNew}");
-
-            if (!createdNew)
+            if (createdNew)
             {
-                Debug.WriteLine("Wykryto istniej¹c¹ instancjê, próba przekazania przez pipe...");
-                try
-                {
-                    using (var pipe = new NamedPipeClientStream(".", "EZDUploaderPipe", PipeDirection.Out))
-                    {
-                        Debug.WriteLine("Próba po³¹czenia z pipe...");
-                        pipe.Connect(1000);
-                        Debug.WriteLine("Po³¹czono z pipe!");
-
-                        using (var writer = new StreamWriter(pipe))
-                        {
-                            foreach (var arg in validArgs)
-                            {
-                                Debug.WriteLine($"Wysy³am do pipe: {arg}");
-                                writer.WriteLine(arg);
-                            }
-                            writer.Flush();
-                            Debug.WriteLine("Zakoñczono wysy³anie do pipe");
-                        }
-                    }
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"B£¥D przy próbie przekazania przez pipe: {ex}");
-                    StartNormalApplication(validArgs);
-                }
+                // Pierwsza instancja
+                RunFirstInstance(args);
             }
             else
             {
-                Debug.WriteLine("Uruchamiam jako nowa instancja");
-                StartNormalApplication(validArgs);
+                // PrÃ³ba komunikacji z istniejÄ…cÄ… instancjÄ…
+                SendFilesToExistingInstance(args);
             }
         }
     }
 
-    static void StartNormalApplication(string[] args)
+    static void RunFirstInstance(string[] args)
+    {
+        Application.SetHighDpiMode(HighDpiMode.SystemAware);
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+
+        var services = new ServiceCollection();
+        ConfigureServices(services);
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var ezdService = serviceProvider.GetRequiredService<IEzdApiService>();
+        var fileUploadService = serviceProvider.GetRequiredService<IFileUploadService>();
+        var mainForm = serviceProvider.GetRequiredService<MainForm>();
+
+        // Uruchom serwer IPC w osobnym wÄ…tku
+        var ipcServerThread = new Thread(() => RunIPCServer(mainForm, fileUploadService));
+        ipcServerThread.SetApartmentState(ApartmentState.STA);
+        ipcServerThread.IsBackground = true;
+        ipcServerThread.Start();
+
+        // Dodaj pliki przekazane podczas uruchomienia
+        if (args.Length > 0)
+        {
+            mainForm.HandleCreated += async (s, e) =>
+            {
+                await fileUploadService.AddFiles(args);
+                mainForm.RefreshFilesList();
+            };
+        }
+
+        Application.Run(mainForm);
+    }
+
+    static void SendFilesToExistingInstance(string[] args)
     {
         try
         {
-            Application.SetHighDpiMode(HighDpiMode.SystemAware);
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-
-            var services = new ServiceCollection();
-            ConfigureServices(services);
-
-            using var serviceProvider = services.BuildServiceProvider();
-            var ezdService = serviceProvider.GetRequiredService<IEzdApiService>();
-            var fileUploadService = serviceProvider.GetRequiredService<IFileUploadService>();
-            var mainForm = serviceProvider.GetRequiredService<MainForm>();
-
-            // Uruchom serwer pipe w osobnym w¹tku
-            var pipeServerThread = new Thread(() => RunPipeServer(mainForm, fileUploadService));
-            pipeServerThread.SetApartmentState(ApartmentState.STA);
-            pipeServerThread.IsBackground = true;
-            pipeServerThread.Start();
-
-            // Asynchronicznie dodaj pliki jeœli s¹
-            if (args.Length > 0)
+            using (var clientChannel = new NamedPipeClientStream(".", "EZDUploaderIPCChannel", PipeDirection.Out))
             {
-                mainForm.HandleCreated += async (s, e) =>
-                {
-                    Debug.WriteLine($"Dodawanie plików: {string.Join(", ", args)}");
-                    await fileUploadService.AddFiles(args);
-                    mainForm.RefreshFilesList();
-                };
-            }
+                clientChannel.Connect(5000); // ZwiÄ™kszamy timeout do 5 sekund
 
-            Application.Run(mainForm);
+                using (var writer = new StreamWriter(clientChannel))
+                {
+                    // WyÅ›lij liczbÄ™ plikÃ³w jako pierwszÄ… informacjÄ™
+                    writer.WriteLine("FILES_TRANSFER");
+                    writer.WriteLine(args.Length.ToString());
+                    writer.Flush(); // WaÅ¼ne - flush po kaÅ¼dej waÅ¼nej operacji
+                    
+                    // Teraz wysyÅ‚amy kaÅ¼dy plik oddzielnie z dodatkowym flush
+                    foreach (var file in args)
+                    {
+                        writer.WriteLine(file);
+                        writer.Flush();
+                    }
+                    writer.WriteLine("FILES_END");
+                    writer.Flush();
+                }
+            }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"B³¹d podczas startu aplikacji: {ex}");
-            MessageBox.Show($"Wyst¹pi³ b³¹d podczas uruchamiania aplikacji: {ex.Message}",
-                "B³¹d krytyczny", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show($"Nie moÅ¼na przesÅ‚aÄ‡ plikÃ³w do istniejÄ…cej instancji: {ex.Message}",
+                "BÅ‚Ä…d", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
-    static void RunPipeServer(MainForm form, IFileUploadService fileUploadService)
-    {
-        Debug.WriteLine("### URUCHOMIONO PIPE SERVER ###");
 
+    static void RunIPCServer(MainForm mainForm, IFileUploadService fileUploadService)
+    {
         while (true)
         {
             try
             {
-                Debug.WriteLine("Pipe server czeka na po³¹czenie...");
-                using (var pipe = new NamedPipeServerStream("EZDUploaderPipe", PipeDirection.In))
+                using (var serverChannel = new NamedPipeServerStream("EZDUploaderIPCChannel",
+                    PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous))
                 {
-                    pipe.WaitForConnection();
-                    Debug.WriteLine("Pipe server: po³¹czono!");
+                    serverChannel.WaitForConnection();
+                    Debug.WriteLine("IPC: PoÅ‚Ä…czenie klienta nawiÄ…zane");
 
-                    var files = new List<string>();
-                    using (var reader = new StreamReader(pipe))
+                    using (var reader = new StreamReader(serverChannel))
                     {
-                        Debug.WriteLine("Pipe server: czytam dane...");
-                        string fileName;
-                        while ((fileName = reader.ReadLine()) != null)
+                        var header = reader.ReadLine();
+                        Debug.WriteLine($"IPC: Otrzymano nagÅ‚Ã³wek: {header}");
+                        
+                        if (header != "FILES_TRANSFER")
+                            continue;
+
+                        var filesToAdd = new List<string>();
+                        
+                        // Odczytujemy liczbÄ™ plikÃ³w, ktÃ³re majÄ… byÄ‡ przesÅ‚ane
+                        var filesCountStr = reader.ReadLine();
+                        Debug.WriteLine($"IPC: Liczba plikÃ³w do odebrania: {filesCountStr}");
+                        
+                        if (!int.TryParse(filesCountStr, out int expectedFilesCount))
                         {
-                            Debug.WriteLine($"Pipe server odczyta³: {fileName}");
-                            if (!string.IsNullOrWhiteSpace(fileName))
+                            Debug.WriteLine("IPC: NieprawidÅ‚owy format liczby plikÃ³w");
+                            continue;
+                        }
+                        
+                        // Przygotowujemy listÄ™ o odpowiednim rozmiarze
+                        filesToAdd = new List<string>(expectedFilesCount);
+                        
+                        // Odczytujemy pliki do osiÄ…gniÄ™cia koÅ„ca lub oczekiwanej liczby plikÃ³w
+                        string line;
+                        int readFilesCount = 0;
+                        
+                        while ((line = reader.ReadLine()) != null && line != "FILES_END" && readFilesCount < expectedFilesCount * 2) 
+                        {
+                            if (!string.IsNullOrWhiteSpace(line))
                             {
-                                files.Add(fileName);
+                                filesToAdd.Add(line);
+                                Debug.WriteLine($"IPC: Dodano plik: {line}");
+                                readFilesCount++;
                             }
                         }
-                    }
+                        
+                        Debug.WriteLine($"IPC: Odczytano {filesToAdd.Count} plikÃ³w z {expectedFilesCount} oczekiwanych");
 
-                    Debug.WriteLine($"Pipe server odczyta³ {files.Count} plików");
-
-                    if (files.Any())
-                    {
-                        Debug.WriteLine("Pipe server: próba dodania plików...");
-                        form.Invoke(() =>
+                        if (filesToAdd.Any())
                         {
-                            Debug.WriteLine("Pipe server: wywo³ujê AddFiles...");
-                            // Uruchom asynchroniczn¹ operacjê i poczekaj na jej zakoñczenie
-                            form.BeginInvoke(async () =>
+                            var filesArray = filesToAdd.ToArray();
+                            Debug.WriteLine($"IPC: Przekazywanie {filesArray.Length} plikÃ³w do serwisu");
+                            
+                            mainForm.Invoke(() =>
                             {
-                                try
+                                mainForm.BeginInvoke(async () =>
                                 {
-                                    await fileUploadService.AddFiles(files.ToArray());
-                                    form.RefreshFilesList();
-                                }
-                                catch (Exception ex)
-                                {
-                                    Debug.WriteLine($"B£¥D podczas dodawania plików w pipe server: {ex}");
-                                    MessageBox.Show($"B³¹d podczas dodawania plików: {ex.Message}",
-                                        "B³¹d", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                                }
+                                    try
+                                    {
+                                        await fileUploadService.AddFiles(filesArray);
+                                        mainForm.RefreshFilesList();
+                                        Debug.WriteLine("IPC: Pliki zostaÅ‚y dodane i lista odÅ›wieÅ¼ona");
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Debug.WriteLine($"IPC: BÅ‚Ä…d podczas dodawania plikÃ³w: {ex.Message}");
+                                        MessageBox.Show($"BÅ‚Ä…d podczas dodawania plikÃ³w: {ex.Message}",
+                                            "BÅ‚Ä…d", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                    }
+                                });
                             });
-                        });
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"B£¥D w pipe server: {ex}");
-                Thread.Sleep(100); // Krótkie opóŸnienie przed kolejn¹ prób¹
+                // Log bÅ‚Ä™du, ale nie zatrzymuj serwera
+                Debug.WriteLine($"BÅ‚Ä…d w IPC Server: {ex.Message}");
+                Thread.Sleep(100);
             }
         }
     }
+
 
     private static void ConfigureServices(ServiceCollection services)
     {

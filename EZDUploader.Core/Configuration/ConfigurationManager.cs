@@ -78,6 +78,55 @@ namespace EZDUploader.Core.Configuration
         {
             try
             {
+                // Najpierw sprawdzamy, czy istnieje plik CSV
+                string csvFileName = "RodzajeDokumentów.csv";
+                var csvPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, csvFileName);
+                
+                if (File.Exists(csvPath))
+                {
+                    try
+                    {
+                        var documentTypes = new List<DocumentType>();
+                        var lines = File.ReadAllLines(csvPath, Encoding.UTF8);
+                        
+                        // Pomijamy pierwszy wiersz (nagłówek)
+                        for (int i = 1; i < lines.Length; i++)
+                        {
+                            var line = lines[i];
+                            if (string.IsNullOrWhiteSpace(line)) continue;
+                            
+                            var parts = line.Split(';');
+                            
+                            if (parts.Length >= 4) // Upewniamy się, że mamy dostęp do kolumny Id i Nazwa
+                            {
+                                if (int.TryParse(parts[0], out int id) && !string.IsNullOrWhiteSpace(parts[3]))
+                                {
+                                    documentTypes.Add(new DocumentType
+                                    {
+                                        Id = id,
+                                        Name = parts[3] // Nazwa jest w czwartej kolumnie (indeks 3)
+                                    });
+                                }
+                            }
+                        }
+                        
+                        if (documentTypes.Count > 0)
+                        {
+                            Debug.WriteLine($"Załadowano {documentTypes.Count} typów dokumentów z pliku CSV");
+                            return documentTypes;
+                        }
+                        else
+                        {
+                            Debug.WriteLine($"Plik CSV istnieje, ale nie zawiera poprawnych danych");
+                        }
+                    }
+                    catch (Exception csvEx)
+                    {
+                        Debug.WriteLine($"Błąd podczas parsowania pliku CSV: {csvEx.Message}");
+                    }
+                }
+                
+                // Jeśli nie udało się załadować z CSV, próbujemy z JSON
                 var docTypesPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, DOCUMENT_TYPES_FILE);
                 if (File.Exists(docTypesPath))
                 {
@@ -87,7 +136,7 @@ namespace EZDUploader.Core.Configuration
                 }
                 else
                 {
-                    // Jeśli plik nie istnieje, utwórz go z domyślnymi typami
+                    // Jeśli plik JSON też nie istnieje, utwórz go z domyślnymi typami
                     var defaultTypes = GetDefaultDocumentTypes();
                     SaveDocumentTypes(defaultTypes);
                     return defaultTypes;

@@ -30,48 +30,120 @@ namespace EZDUploader.Infrastructure.Services
             Debug.WriteLine($"### FileUploadService.AddFiles ###");
             Debug.WriteLine($"Próba dodania {filePaths.Length} plików:");
 
+            if (filePaths == null || filePaths.Length == 0)
+            {
+                Debug.WriteLine("Brak plików do dodania");
+                return;
+            }
+
             try
             {
-                Debug.WriteLine($"Ścieżki plików do dodania:");
+                // Zapamiętujemy początkowy stan listy plików
+                var existingPaths = _files.Select(f => f.FilePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                Debug.WriteLine($"Istniejące pliki przed dodaniem nowych: {existingPaths.Count}");
+
+                // Filtrujemy tylko nowe pliki - bardzo ważne dla poprawnego działania
+                var newFiles = filePaths
+                    .Where(path => !string.IsNullOrEmpty(path) && !existingPaths.Contains(path))
+                    .ToList();
+                
+                Debug.WriteLine($"Nowe pliki do dodania (po filtrowaniu duplikatów): {newFiles.Count}");
+                
+                // Rejestrujemy wszystkie ścieżki
                 foreach (var path in filePaths)
                 {
-                    Debug.WriteLine($"- {path}");
+                    Debug.WriteLine($"Ścieżka do pliku: '{path}'");
                 }
 
-                // Sprawdzamy duplikaty
-                var existingPaths = _files.Select(f => f.FilePath).ToHashSet();
-                Debug.WriteLine($"Istniejące pliki: {existingPaths.Count}");
-
-                var newFiles = filePaths.Where(path => !existingPaths.Contains(path));
-                Debug.WriteLine($"Nowe pliki do dodania: {newFiles.Count()}");
-
-                foreach (var path in newFiles)
+                if (newFiles.Count == 0)
                 {
-                    try
-                    {
-                        Debug.WriteLine($"Próba dodania pliku: {path}");
-                        var fileInfo = new FileInfo(path);
-                        Debug.WriteLine($"FileInfo utworzony dla: {fileInfo.Name}");
-
-                        _files.Add(new UploadFile
-                        {
-                            FilePath = path,
-                            FileName = fileInfo.Name,
-                            FileSize = fileInfo.Length,
-                            AddedDate = DateTime.Now,
-                            Status = UploadStatus.Pending,
-                            SortOrder = _currentSortOrder++
-                        });
-                        Debug.WriteLine($"Plik dodany pomyślnie: {path}");
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"BŁĄD podczas dodawania pojedynczego pliku {path}: {ex}");
-                        throw;
-                    }
+                    Debug.WriteLine("Nie znaleziono nowych plików do dodania po filtrowaniu");
+                    return;
                 }
+
+                const int BATCH_SIZE = 10; // Zmniejszamy rozmiar partii dla lepszej kontroli
+                var failedFiles = new List<string>();
+                var addedFiles = new List<string>();
+
+                for (int i = 0; i < newFiles.Count; i += BATCH_SIZE)
+                {
+                    var batch = newFiles.Skip(i).Take(BATCH_SIZE).ToList();
+                    Debug.WriteLine($"Przetwarzanie partii {i/BATCH_SIZE + 1}, rozmiar: {batch.Count} plików");
+
+                    foreach (var path in batch)
+                    {
+                        try
+                        {
+                            Debug.WriteLine($"Próba dodania pliku: {path}");
+                            var fileInfo = new FileInfo(path);
+
+                            // Dodatkowe sprawdzenie istnienia pliku
+                            if (!fileInfo.Exists)
+                            {
+                                Debug.WriteLine($"Plik nie istnieje: {path}");
+                                failedFiles.Add(path);
+                                continue;
+                            }
+
+                            // Dodatkowe ograniczenie rozmiaru pliku (np. 100 MB)
+                            if (fileInfo.Length > 100 * 1024 * 1024)
+                            {
+                                Debug.WriteLine($"Plik za duży: {path}");
+                                failedFiles.Add(path);
+                                continue;
+                            }
+
+                            Debug.WriteLine($"FileInfo utworzony dla: {fileInfo.Name}");
+
+                            _files.Add(new UploadFile
+                            {
+                                FilePath = path,
+                                FileName = fileInfo.Name,
+                                FileSize = fileInfo.Length,
+                                AddedDate = DateTime.Now,
+                                Status = UploadStatus.Pending,
+                                SortOrder = _currentSortOrder++
+                            });
+
+                            addedFiles.Add(path);
+                            Debug.WriteLine($"Plik dodany pomyślnie: {path}");
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"BŁĄD podczas dodawania pojedynczego pliku {path}: {ex}");
+                            failedFiles.Add(path);
+                        }
+                    }
+
+                    // Pauzujemy po każdej partii by dać szansę UI na zaktualizowanie
+                    await Task.Delay(50); // Krótka pauza między partiami
+                }
+
+                Debug.WriteLine($"Po dodaniu wszystkich plików, łącznie w serwisie: {_files.Count}");
+
 
                 Debug.WriteLine($"Aktualna liczba plików w serwisie: {_files.Count}");
+
+                // Raportowanie nieudanych plików
+                if (failedFiles.Any())
+                {
+                    Debug.WriteLine($"Nieudane pliki ({failedFiles.Count}):");
+                    foreach (var failedFile in failedFiles)
+                    {
+                        Debug.WriteLine($"- {failedFile}");
+                    }
+
+                    // Dodaj bardziej szczegółowy mechanizm raportowania błędów
+                    throw new AggregateException("Niektóre pliki nie mogły zostać dodane",
+                        failedFiles.Select(f => new Exception($"Nie można dodać pliku: {f}")));
+                }
+
+                // Log dodanych plików
+                Debug.WriteLine($"Dodane pliki ({addedFiles.Count}):");
+                foreach (var addedFile in addedFiles)
+                {
+                    Debug.WriteLine($"- {addedFile}");
+                }
             }
             catch (Exception ex)
             {

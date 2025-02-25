@@ -815,64 +815,97 @@ namespace EZDUploader.UI
 
         public void RefreshFilesList()
         {
-            if (InvokeRequired)
-            {
-                Invoke(RefreshFilesList);
-                return;
-            }
-            filesListView.BeginUpdate();
             try
             {
-                filesListView.Items.Clear();
-
-                // Sortujemy po SortOrder przed dodaniem do listy
-                var sortedFiles = _fileUploadService.Files.OrderBy(f => f.SortOrder).ToList();
-
-                for (int i = 0; i < sortedFiles.Count; i++)
+                if (InvokeRequired)
                 {
-                    var file = sortedFiles[i];
-                    var item = new ListViewItem((i + 1).ToString());  // LP
-                    item.SubItems.Add(file.FileName);
-                    item.SubItems.Add(FormatFileSize(file.FileSize));
-                    item.SubItems.Add(file.BrakDaty ? "Brak daty" : file.AddedDate.ToString("yyyy-MM-dd"));
-                    item.SubItems.Add(file.BrakZnaku ? "Brak znaku" : (file.NumerPisma ?? "-"));
-                    item.SubItems.Add(file.DocumentType ?? "-");
-                    item.SubItems.Add(!string.IsNullOrEmpty(file.NowaKoszulkaNazwa) ?
-                        "Nowa: " + file.NowaKoszulkaNazwa :
-                        (file.KoszulkaId.HasValue ? file.KoszulkaId.ToString() : "-"));
-                    item.Tag = file;
+                    Invoke(new Action(RefreshFilesList));
+                    return;
+                }
+                
+                Debug.WriteLine($"RefreshFilesList: Odświeżam listę plików, aktualna ilość: {_fileUploadService.Files.Count}");
+                
+                if (IsDisposed || filesListView == null || filesListView.IsDisposed)
+                {
+                    Debug.WriteLine("RefreshFilesList: Form lub listView jest disposed, pomijam odświeżanie");
+                    return;
+                }
+                
+                filesListView.BeginUpdate();
+                try
+                {
+                    filesListView.Items.Clear();
 
-                    switch (file.Status)
+                    // Pobieramy kopię listy plików, aby uniknąć modyfikacji podczas iteracji
+                    var files = _fileUploadService.Files.ToList();
+                    Debug.WriteLine($"RefreshFilesList: Skopiowano {files.Count} plików do odświeżenia");
+                    
+                    // Sortujemy po SortOrder przed dodaniem do listy
+                    var sortedFiles = files.OrderBy(f => f.SortOrder).ToList();
+
+                    for (int i = 0; i < sortedFiles.Count; i++)
                     {
-                        case UploadStatus.Completed:
-                            item.ForeColor = Color.Green;
-                            break;
-                        case UploadStatus.Failed:
-                            item.ForeColor = Color.Red;
-                            break;
-                        case UploadStatus.Uploading:
-                            item.ForeColor = Color.Blue;
-                            break;
+                        var file = sortedFiles[i];
+                        var item = new ListViewItem((i + 1).ToString());  // LP
+                        item.SubItems.Add(file.FileName);
+                        item.SubItems.Add(FormatFileSize(file.FileSize));
+                        item.SubItems.Add(file.BrakDaty ? "Brak daty" : file.AddedDate.ToString("yyyy-MM-dd"));
+                        item.SubItems.Add(file.BrakZnaku ? "Brak znaku" : (file.NumerPisma ?? "-"));
+                        item.SubItems.Add(file.DocumentType ?? "-");
+                        item.SubItems.Add(!string.IsNullOrEmpty(file.NowaKoszulkaNazwa) ?
+                            "Nowa: " + file.NowaKoszulkaNazwa :
+                            (file.KoszulkaId.HasValue ? file.KoszulkaId.ToString() : "-"));
+                        item.Tag = file;
+
+                        switch (file.Status)
+                        {
+                            case UploadStatus.Completed:
+                                item.ForeColor = Color.Green;
+                                break;
+                            case UploadStatus.Failed:
+                                item.ForeColor = Color.Red;
+                                break;
+                            case UploadStatus.Uploading:
+                                item.ForeColor = Color.Blue;
+                                break;
+                        }
+
+                        filesListView.Items.Add(item);
                     }
 
-                    filesListView.Items.Add(item);
+                    Debug.WriteLine($"RefreshFilesList: Dodano {filesListView.Items.Count} elementów do listy");
+                    
+                    // Aktualizacja informacji o zaznaczonych plikach
+                    UpdateSelectedFilesInfo();
                 }
-
-                // Aktualizacja informacji o zaznaczonych plikach
-                UpdateSelectedFilesInfo();
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"BŁĄD podczas odświeżania listy plików: {ex}");
+                    MessageBox.Show($"Wystąpił błąd podczas odświeżania listy plików: {ex.Message}",
+                        "Błąd", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                finally
+                {
+                    if (!IsDisposed && filesListView != null && !filesListView.IsDisposed)
+                    {
+                        filesListView.EndUpdate();
+                        Debug.WriteLine("RefreshFilesList: Lista została odświeżona");
+                    }
+                }
+            }
+            catch (ObjectDisposedException ex)
+            {
+                Debug.WriteLine($"RefreshFilesList: Błąd ObjectDisposedException: {ex.Message}");
+                // Ignorujemy, formularz został zamknięty 
+            }
+            catch (InvalidOperationException ex)
+            {
+                Debug.WriteLine($"RefreshFilesList: Błąd InvalidOperationException: {ex.Message}");
+                // Ignorujemy, prawdopodobnie problem z Invoke
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"BŁĄD podczas odświeżania listy plików: {ex}");
-                MessageBox.Show($"Wystąpił błąd podczas odświeżania listy plików: {ex.Message}",
-                    "Błąd", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            finally
-            {
-                if (!IsDisposed && filesListView != null && !filesListView.IsDisposed)
-                {
-                    filesListView.EndUpdate();
-                }
+                Debug.WriteLine($"RefreshFilesList: Nieobsłużony błąd: {ex.Message}");
             }
         }
 
