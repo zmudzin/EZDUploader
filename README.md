@@ -40,7 +40,7 @@ Przed pierwszym użyciem skonfiguruj:
 - Metodę autoryzacji (token/login)
 - Dane uwierzytelniające
 - uruchomić ponownie aplikację
-- Opjonalnie dodać registry.reg celem dodania do menu kontekstowego Wysyłki do EZD (domyślny katalog dla aplikacji to C:\EZDUploader)
+- Opjonalnie dodać registry.reg celem dodania do menu kontekstowego Wysyłki do EZD (domyślny katalog dla aplikacji to C:\EZDUploader, maksymalna ilość plików którą można w ten sposób dodac to 100)
 - Po zakończeniu wstępnej konfiguracji można edytować documentTypes.json
 
 
