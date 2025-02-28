@@ -5,6 +5,7 @@ using EZDUploader.Core.Models;
 using EZDUploader.Core.Validators;
 using System.Diagnostics;
 using System.ComponentModel.DataAnnotations;
+using System.Text;
 
 namespace EZDUploader.Infrastructure.Services
 {
@@ -16,6 +17,8 @@ namespace EZDUploader.Infrastructure.Services
         private int _currentSortOrder = 0;
         private bool _cancelRequested;
 
+        // Dodana stała limitu plików
+        private const int MAX_FILES_LIMIT = 100;
 
         public FileUploadService(IEzdApiService ezdService, IFileValidator fileValidator)
         {
@@ -38,6 +41,18 @@ namespace EZDUploader.Infrastructure.Services
 
             try
             {
+                // Sprawdzanie limitu plików - zapis informacji do loga
+                if (filePaths.Length > MAX_FILES_LIMIT)
+                {
+                    Debug.WriteLine($"UWAGA: Przekroczono limit plików. Wybrano {filePaths.Length}, limit: {MAX_FILES_LIMIT}");
+                    
+                    // Przycinamy tablicę do maksymalnego dozwolonego limitu
+                    Debug.WriteLine($"Przycinanie listy plików do limitu {MAX_FILES_LIMIT}");
+                    filePaths = filePaths.Take(MAX_FILES_LIMIT).ToArray();
+                    
+                    Debug.WriteLine($"Po przycięciu, liczba plików: {filePaths.Length}");
+                }
+
                 // Zapamiętujemy początkowy stan listy plików
                 var existingPaths = _files.Select(f => f.FilePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
                 Debug.WriteLine($"Istniejące pliki przed dodaniem nowych: {existingPaths.Count}");
@@ -62,7 +77,7 @@ namespace EZDUploader.Infrastructure.Services
                 }
 
                 const int BATCH_SIZE = 10; // Zmniejszamy rozmiar partii dla lepszej kontroli
-                var failedFiles = new List<string>();
+                var failedFiles = new List<(string FilePath, string Reason)>(); // Zmodyfikowana struktura z przyczyną błędu
                 var addedFiles = new List<string>();
 
                 for (int i = 0; i < newFiles.Count; i += BATCH_SIZE)
@@ -81,7 +96,7 @@ namespace EZDUploader.Infrastructure.Services
                             if (!fileInfo.Exists)
                             {
                                 Debug.WriteLine($"Plik nie istnieje: {path}");
-                                failedFiles.Add(path);
+                                failedFiles.Add((path, "Plik nie istnieje"));
                                 continue;
                             }
 
@@ -89,7 +104,16 @@ namespace EZDUploader.Infrastructure.Services
                             if (fileInfo.Length > 100 * 1024 * 1024)
                             {
                                 Debug.WriteLine($"Plik za duży: {path}");
-                                failedFiles.Add(path);
+                                failedFiles.Add((path, "Plik przekracza maksymalny dozwolony rozmiar 100MB"));
+                                continue;
+                            }
+
+                            // Dodatkowa walidacja nazwy pliku
+                            string fileValidationError = _fileValidator.GetFileValidationError(fileInfo.Name);
+                            if (fileValidationError != null)
+                            {
+                                Debug.WriteLine($"Nieprawidłowa nazwa pliku: {path} - {fileValidationError}");
+                                failedFiles.Add((path, fileValidationError));
                                 continue;
                             }
 
@@ -111,7 +135,7 @@ namespace EZDUploader.Infrastructure.Services
                         catch (Exception ex)
                         {
                             Debug.WriteLine($"BŁĄD podczas dodawania pojedynczego pliku {path}: {ex}");
-                            failedFiles.Add(path);
+                            failedFiles.Add((path, $"Błąd: {ex.Message}"));
                         }
                     }
 
@@ -120,22 +144,29 @@ namespace EZDUploader.Infrastructure.Services
                 }
 
                 Debug.WriteLine($"Po dodaniu wszystkich plików, łącznie w serwisie: {_files.Count}");
-
-
                 Debug.WriteLine($"Aktualna liczba plików w serwisie: {_files.Count}");
 
                 // Raportowanie nieudanych plików
                 if (failedFiles.Any())
                 {
                     Debug.WriteLine($"Nieudane pliki ({failedFiles.Count}):");
-                    foreach (var failedFile in failedFiles)
+                    
+                    var exceptions = new List<Exception>();
+                    var sb = new StringBuilder();
+                    
+                    foreach (var (failedFile, reason) in failedFiles)
                     {
-                        Debug.WriteLine($"- {failedFile}");
+                        var fileName = Path.GetFileName(failedFile);
+                        Debug.WriteLine($"- {fileName}: {reason}");
+                        
+                        // Tworzymy wyjątek z dokładną nazwą pliku i przyczyną
+                        exceptions.Add(new Exception($"{fileName}: {reason}"));
                     }
 
                     // Dodaj bardziej szczegółowy mechanizm raportowania błędów
-                    throw new AggregateException("Niektóre pliki nie mogły zostać dodane",
-                        failedFiles.Select(f => new Exception($"Nie można dodać pliku: {f}")));
+                    throw new AggregateException(
+                        $"Nie wszystkie pliki zostały dodane. Liczba nieudanych plików: {failedFiles.Count} z {newFiles.Count}",
+                        exceptions);
                 }
 
                 // Log dodanych plików
@@ -165,7 +196,16 @@ namespace EZDUploader.Infrastructure.Services
         {
             _cancelRequested = false;
             const int ROZMIAR_PACZKI = 20;
-            var plikiDoWyslania = files.ToList();
+            
+            // Zastosowanie limitu również podczas wysyłki
+            var plikiDoWyslania = files.Take(MAX_FILES_LIMIT).ToList();
+            
+            // Jeśli było więcej plików niż limit, logujemy informację
+            if (files.Count() > MAX_FILES_LIMIT)
+            {
+                Debug.WriteLine($"UWAGA: Podczas wysyłki zastosowano limit plików. Wybrano {files.Count()}, wysyłane: {plikiDoWyslania.Count}");
+            }
+
             Debug.WriteLine($"Rozpoczęcie wysyłki {plikiDoWyslania.Count} plików");
             Debug.WriteLine($"Status plików przed wysyłką:");
             foreach (var plik in plikiDoWyslania)
