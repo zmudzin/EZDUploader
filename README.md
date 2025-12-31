@@ -48,6 +48,8 @@ Przed pierwszym użyciem skonfiguruj:
 
 
 ## Obsługiwane Rodzaje Dokumentów
+
+### Domyślne rodzaje dokumentów:
 - Pismo
 - Notatka
 - Wniosek
@@ -55,11 +57,83 @@ Przed pierwszym użyciem skonfiguruj:
 - Opinia
 - Zaświadczenie
 - Inny
-(łatwa możliwość modyfikacji i dodania innych rodzajów w documentTypes.json, ewentualnie dodać csv z wynikiem
-SELECT       *
-FROM         SlownikiAplikacji
-WHERE        (IdSlownika = '8')
-)
+- **Faktura** ⭐
+- **Zamówienie** ⭐
+- Skarga
+- Nota księgowa
+- Odwołanie
+- Zawiadomienie
+- Umowa
+- Postanowienie
+- Zażalenie
+- Sprawozdanie
+- Rachunek
+- Protokół
+- Notatka służbowa
+- Wezwanie
+- Upoważnienie
+- Pełnomocnictwo
+- Akt notarialny
+- Deklaracja
+- Informacja
+- Powiadomienie
+- Oferta
+- Zgłoszenie
+- Petycja
+- Formularz
+- Zapytanie
+- Oświadczenie
+- Uchwała
+- Zgoda
+- Zarządzenie
+
+**Łącznie: 36 standardowych rodzajów dokumentów**
+
+### Dodawanie i modyfikacja rodzajów dokumentów:
+
+Aplikacja obsługuje **dwa sposoby** dodawania rodzajów dokumentów:
+
+#### Metoda 1: Plik JSON (documentTypes.json) ⭐ **REKOMENDOWANA**
+
+1. Znajdź plik `documentTypes.json` w katalogu aplikacji (obok pliku .exe)
+2. Otwórz plik w edytorze tekstu
+3. Dodaj nowe rodzaje w formacie:
+   ```json
+   {
+     "DocumentTypes": [
+       { "Id": 1, "Name": "Pismo" },
+       { "Id": 2, "Name": "Notatka" },
+       { "Id": 8, "Name": "Faktura" }
+     ]
+   }
+   ```
+4. Zapisz plik i **zrestartuj aplikację**
+
+#### Metoda 2: Plik CSV (RodzajeDokumentów.csv)
+
+1. Utwórz plik `RodzajeDokumentów.csv` w katalogu aplikacji
+2. Format CSV (separator: średnik `;`, kodowanie: UTF-8):
+   ```csv
+   Id;Kolumna2;Kolumna3;Nazwa
+   1;;;Pismo
+   2;;;Notatka
+   8;;;Faktura
+   ```
+   - **Kolumna 1**: ID (liczba)
+   - **Kolumna 4**: Nazwa rodzaju dokumentu
+3. Zapisz plik w UTF-8 i **zrestartuj aplikację**
+
+**Uwaga**: Jeśli istnieje plik CSV, aplikacja użyje go zamiast JSON.
+
+**Szczegółowa instrukcja**: Zobacz plik `INSTRUKCJA_RODZAJE_DOKUMENTOW.md` w katalogu projektu.
+
+**Import z bazy danych**: Możesz wyeksportować dane z SQL:
+```sql
+SELECT *
+FROM SlownikiAplikacji
+WHERE IdSlownika = '8'
+```
+i zapisać jako CSV z separatorami średnikami (`;`).
 
 ## Instrukcja Użycia
 
