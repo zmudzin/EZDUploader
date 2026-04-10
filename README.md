@@ -57,8 +57,8 @@ Przed pierwszym użyciem skonfiguruj:
 - Opinia
 - Zaświadczenie
 - Inny
-- **Faktura** ⭐
-- **Zamówienie** ⭐
+- Faktura
+- Zamówienie
 - Skarga
 - Nota księgowa
 - Odwołanie
@@ -93,7 +93,7 @@ Przed pierwszym użyciem skonfiguruj:
 
 Aplikacja obsługuje **dwa sposoby** dodawania rodzajów dokumentów:
 
-#### Metoda 1: Plik JSON (documentTypes.json) ⭐ **REKOMENDOWANA**
+#### Metoda 1: Plik JSON (documentTypes.json) **REKOMENDOWANA**
 
 1. Znajdź plik `documentTypes.json` w katalogu aplikacji (obok pliku .exe)
 2. Otwórz plik w edytorze tekstu
