@@ -87,8 +87,6 @@ Przed pierwszym użyciem skonfiguruj:
 - Zgoda
 - Zarządzenie
 
-**Łącznie: 36 standardowych rodzajów dokumentów**
-
 ### Dodawanie i modyfikacja rodzajów dokumentów:
 
 Aplikacja obsługuje **dwa sposoby** dodawania rodzajów dokumentów:
